@@ -1,8 +1,11 @@
 Red[]
 
+#include %funk.red
+
 encode-string: func [string [string!]][
 	string: to binary! string
 	insert string skip to binary! length? string 2
+	string
 ]
 
 decode-string: func [data [binary!]][
@@ -115,8 +118,7 @@ make-conn-header: funk [
 
 	out: copy #{}
 
-	append out #{0004}	; Protocol Name length
-	append out "MQTT"	; Protocol Name
+	append out encode-string "MQTT"	; Protocol Name
 	append out #{05}	; Protocol Version
 
 	connect-flags: #{00}
@@ -183,18 +185,49 @@ make-conn-header: funk [
 	out
 ]
 
-make-payload: func [][
+make-payload: funk [][
 
 ;	The Payload of the CONNECT packet contains one or more length-prefixed
 ;	fields, whose presence is determined by the flags in the Variable Header.
 ;	These fields, if present, MUST appear in the order:
-;		Client Identifier
+;		Client Identifier (MUST be present)
 ;		Will Properties
 ;		Will Topic
 ;		Will Payload
 ;		User Name
-;		Passwor 
+;		Password
 
+	/local payload: clear #{}
+
+	; -- client identifier
+
+	append payload encode-string "redmqttv0" ; TODO: should be different for each client
+
+	; -- will properties (if will flag = 1)
+
+	; ---- property length (varlenint)
+
+	; ---- will delay interval [18h 4 byte]
+
+	; ---- payload format indicator [01h 1 byte logic]
+
+	; ---- message expiry interval [02h 4 byte]
+
+	; ---- content type [03h string]
+
+	; ---- response topic [08h string]
+
+	; ---- correlation data [09h binary]
+
+	; ---- user property [26h string pair]
+
+	; -- will topic [string] (if will flag = 1)
+
+	; -- will payload [binary] (if will flag = 1)
+
+	; -- user name [string] (if user name flag = 1)
+
+	; -- password [string] (if password flag = 1)
 
 ]
 
