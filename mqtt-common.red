@@ -102,48 +102,100 @@ make-message: func [
 	out
 ]
 
-make-connect-header: func [
+make-conn-header: funk [
 	flags
 	/local value
 ][
-; -- CONNECT Variable Header
+	; -- CONNECT Variable Header
 
-; The Variable Header for the CONNECT Packet contains 
-; the following fields in this order: 
-;
-; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
+	; The Variable Header for the CONNECT Packet contains 
+	; the following fields in this order: 
+	;
+	; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
 
-out: copy #{}
+	out: copy #{}
 
-append out #{04}	; Protocol Name length
-append out "MQTT"	; Protocol Name
-append out #{05}	; Protocol Version
+	append out #{0004}	; Protocol Name length
+	append out "MQTT"	; Protocol Name
+	append out #{05}	; Protocol Version
 
-connect-flags: #{00}
-parse flags [
-	any [
-		'clean (connect-flags: connect-flags or #{02})
-	|	'will (connect-flags: connect-flags or #{04})
-	|	'qos set value integer! (
-			value: skip to binary! value << 3 3
-			connect-flags: connect-flags or #{04} or value
-		)
-	|	'retain (connect-flags: connect-flags or #{20})
-	|	'username (connect-flags: connect-flags or #{80})
-	|	'password (connect-flags: connect-flags or #{40})
+	connect-flags: #{00}
+	parse flags [
+		any [
+			'clean (connect-flags: connect-flags or #{02})
+		|	'will (connect-flags: connect-flags or #{04})
+		|	'qos set value integer! (
+				value: skip to binary! value << 3 3
+				connect-flags: connect-flags or #{04} or value
+			)
+		|	'retain (connect-flags: connect-flags or #{20})
+		|	'username (connect-flags: connect-flags or #{80})
+		|	'password (connect-flags: connect-flags or #{40})
+		]
 	]
+	append out connect-flags
+
+	append out #{0000}	; TODO: Keep Alive value (seconds)
+
+
+	; -- Properties
+
+	props: copy #{}
+
+	; ---- session expiry interval (opt) [11h 4 byte]
+
+	;append props #{1100000000}
+
+	; ---- receive maximum (opt) [21h 2 byte]
+
+	;append props #{21FFFF}
+
+	; ---- maximum packet size (opt) [27h 4 byte]
+
+	;append props #{270000FFFF}
+
+	; ---- topic alias maximum (opt) [22h 2 byte]
+
+	;append props #{22FFFF}
+
+	; ---- request response information (opt) [19h 1 byte logic]
+
+	;append props #{1901} ; zero or one
+
+	; ---- request problem information (opt) [17h 1 byte logic]
+
+	;append props #{1701} ; zero or one
+
+	; ---- user property (any) [26h string-pair]
+
+	;append props #{}
+
+	; ---- authentication method (opt) [15h string]
+
+	;append props #{}
+
+	; ---- authentication data (opt) [16 1 byte]  - auth method must be included
+
+	insert props encode-integer length? props
+
+	append out props
+
+	out
 ]
-append out connect-flags
 
-append out #{0000}	; TODO: Keep Alive value (seconds)
+make-payload: func [][
 
-return out
+;	The Payload of the CONNECT packet contains one or more length-prefixed
+;	fields, whose presence is determined by the flags in the Variable Header.
+;	These fields, if present, MUST appear in the order:
+;		Client Identifier
+;		Will Properties
+;		Will Topic
+;		Will Payload
+;		User Name
+;		Passwor 
 
-; -- Properties
 
-property-length: 0 ; FIXME: real value
-
-append out property-length
 ]
 
 make-packet-identifier: func [type [word!]][

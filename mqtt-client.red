@@ -6,6 +6,6 @@ Red[
 #include %mqtt-common.red
 
 make-connection: func [][
-	header: make-connection-header
+	header: make-conn-header
 ]
 
