@@ -1,6 +1,16 @@
 Red[
 	Title: "MQTT client"
 	Author: "Boleslav Březovský"
+	Notes: {
+
+Proper CONNECT message:
+
+b: #{00044D515454050000000000097265646D7174747630}
+insert b #{1016} ; packet type + remaining length← 
+
+~b~ is created using make-connection
+
+	}
 ]
 
 #include %mqtt-common.red
@@ -8,15 +18,17 @@ Red[
 debug: :print
 
 make-connection: func [][
-	request: copy #{}
-	append request make-conn-header
+	/local request: copy #{}
+	append request make-conn-header []
 	append request make-payload
+	insert request encode-integer length? request
+	insert request #{10}
 	request
 ]
 
 
-;client: open tcp://192.168.54.102:8123
-client: open tcp://127.0.0.1:8123
+;client: open tcp://192.168.54.102:1883
+client: open tcp://127.0.0.1:1883
 
 b: make-connection
 

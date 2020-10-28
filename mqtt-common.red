@@ -73,7 +73,97 @@ reserved-flags: [
 	AUTH	0
 ]
 
-make-message: func [
+connect-reason-codes: [
+0
+"Success"
+"The Connection is accepted."
+
+128
+"Unspecified error"
+"The Server does not wish to reveal the reason for the failure, or none of the other Reason Codes apply."
+
+129
+"Malformed Packet"
+"Data within the CONNECT packet could not be correctly parsed."
+
+130
+"Protocol Error"
+"Data in the CONNECT packet does not conform to this specification."
+
+131
+"Implementation specific error"
+"The CONNECT is valid but is not accepted by this Server."
+
+132
+"Unsupported Protocol Version"
+"The Server does not support the version of the MQTT protocol requested by the Client."
+
+133
+"Client Identifier not valid"
+"The Client Identifier is a valid string but is not allowed by the Server."
+
+134
+"Bad User Name or Password"
+"The Server does not accept the User Name or Password specified by the Client"
+
+135
+"Not authorized"
+"The Client is not authorized to connect."
+
+136
+"Server unavailable"
+"The MQTT Server is not available."
+
+137
+"Server busy"
+"The Server is busy. Try again later."
+
+138
+"Banned"
+"This Client has been banned by administrative action. Contact the server administrator."
+
+140
+"Bad authentication method"
+"The authentication method is not supported or does not match the authentication method currently in use."
+
+144
+"Topic Name invalid"
+"The Will Topic Name is not malformed, but is not accepted by this Server."
+
+149
+"Packet too large"
+"The CONNECT packet exceeded the maximum permissible size."
+
+151
+"Quota exceeded"
+"An implementation or administrative imposed limit has been exceeded."
+
+153
+"Payload format invalid"
+"The Will Payload does not match the specified Payload Format Indicator."
+
+154
+"Retain not supported"
+"The Server does not support retained messages, and Will Retain was set to 1."
+
+155
+"QoS not supported"
+"The Server does not support the QoS set in Will QoS."
+
+156
+"Use another server"
+"The Client should temporarily use another server."
+
+157
+"Server moved"
+"The Client should permanently use another server."
+
+159
+"Connection rate exceeded"
+"The connection rate limit has been exceeded."
+]
+
+make-message: funk [
 	type [word!]
 	message
 	/local packet-type flags byte
@@ -95,7 +185,7 @@ make-message: func [
 		append out make-packet-identifier type
 	]
 	; properties
-	if find [
+	if /local type-id: find [
 		CONNECT CONNACK PUBLISH PUBACK PUBREC PUBREL PUBCOMP SUBSCRIBE
 		SUBACK UNSUBSCRIBE UNSUBACK DISCONNECT AUTH
 	] type [
@@ -103,6 +193,42 @@ make-message: func [
 		; TODO set var-byte-int propert length
 	]
 	out
+]
+
+parse-message: funk [msg][
+	msg: copy msg ; NOTE just for testing
+	; -- packet type
+	/local byte: take msg
+	/local type: pick message-types byte >> 4
+	/local flags: byte and 0Fh
+	/local length: decode-integer msg
+
+	; -- variable header
+	;
+	; The Variable Header of the CONNACK Packet contains the following
+	; fields in the order: 
+	;
+	; - Connect Acknowledge Flags
+	; - Connect Reason Code
+	; - Properties
+
+	; ---- connect acknowledge flags
+	byte: take msg
+	if byte > 1 [do make error! "Connect acknowledge flag bits 1-7 aren't 0"]
+	/local session-present?: make logic! byte and 1
+
+	; ---- connect reason code
+	reason-code: select connect-reason-codes take msg
+
+	; -- CONNACK properties
+	length: decode-integer msg
+
+
+
+	reduce [
+		type
+		session-present?
+	]
 ]
 
 make-conn-header: funk [
