@@ -2,14 +2,11 @@ Red[
 	Title: "MQTT client"
 	Author: "Boleslav Březovský"
 	Notes: {
+Connection is ready.
+next step:
 
-Proper CONNECT message:
-
-b: #{00044D515454050000000000097265646D7174747630}
-insert b #{1016} ; packet type + remaining length← 
-
-~b~ is created using make-connection
-
+- send SUBSCRIBE message
+- receive SUBACK reply
 	}
 ]
 
@@ -35,13 +32,16 @@ b: make-connection
 start: now/precise
 
 client/awake: func [event /local port] [
-    debug ["=== Client event:" event/type]
-    port: event/port
-    switch event/type [
-        connect [insert port b]
-        read [probe port/data close port]
-        wrote [copy port]
-    ]
+	debug ["=== Client event:" event/type]
+	port: event/port
+	switch event/type [
+		connect [insert port b]
+		read [
+			parse-message port/data
+		;	close port
+		]
+		wrote [copy port]
+	]
 ]
 
 run-client: does [

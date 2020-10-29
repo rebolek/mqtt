@@ -1,6 +1,7 @@
 Red[]
 
 #include %funk.red
+#include %mqtt-data.red
 
 encode-string: func [string [string!]][
 	string: to binary! string
@@ -8,8 +9,9 @@ encode-string: func [string [string!]][
 	string
 ]
 
-decode-string: func [data [binary!]][
-	
+decode-string: funk [data [binary!]][
+	/local length: take/part data 2
+	to string! take/part data to integer! length
 ]
 
 encode-integer: func [value [integer!] /local out enc-byte][
@@ -39,129 +41,10 @@ decode-integer: func [data [binary!] /local multiplier value enc-byte][
 	value
 ]
 
-message-types: [
-	CONNECT
-	CONNACK
-	PUBLISH
-	PUBACK
-	PUBREC
-	PUBREL
-	PUBCOMP
-	SUBSCRIBE
-	SUBACK
-	UNSUBSCRIBE
-	UNSUBACK
-	PINGREQ
-	DISCONNECT
-	AUTH
-]
+decode-short-int: func [data [binary!]][to integer! take/part data 2]
 
-reserved-flags: [
-	CONNECT	0
-	CONNACK	0
-	PUBACK	0
-	PUBREC	0
-	PUBREL	2
-	PUBCOMP	0
-	SUBSCRIBE	2
-	SUBACK	0
-	UNSUBSCRIBE	2
-	UNSUBACK	0
-	PINGREQ	0
-	PINGRESP	0
-	DISCONNECT	0
-	AUTH	0
-]
+decode-long-int: func [data [binary!]][to integer! take/part data 4]
 
-connect-reason-codes: [
-0
-"Success"
-"The Connection is accepted."
-
-128
-"Unspecified error"
-"The Server does not wish to reveal the reason for the failure, or none of the other Reason Codes apply."
-
-129
-"Malformed Packet"
-"Data within the CONNECT packet could not be correctly parsed."
-
-130
-"Protocol Error"
-"Data in the CONNECT packet does not conform to this specification."
-
-131
-"Implementation specific error"
-"The CONNECT is valid but is not accepted by this Server."
-
-132
-"Unsupported Protocol Version"
-"The Server does not support the version of the MQTT protocol requested by the Client."
-
-133
-"Client Identifier not valid"
-"The Client Identifier is a valid string but is not allowed by the Server."
-
-134
-"Bad User Name or Password"
-"The Server does not accept the User Name or Password specified by the Client"
-
-135
-"Not authorized"
-"The Client is not authorized to connect."
-
-136
-"Server unavailable"
-"The MQTT Server is not available."
-
-137
-"Server busy"
-"The Server is busy. Try again later."
-
-138
-"Banned"
-"This Client has been banned by administrative action. Contact the server administrator."
-
-140
-"Bad authentication method"
-"The authentication method is not supported or does not match the authentication method currently in use."
-
-144
-"Topic Name invalid"
-"The Will Topic Name is not malformed, but is not accepted by this Server."
-
-149
-"Packet too large"
-"The CONNECT packet exceeded the maximum permissible size."
-
-151
-"Quota exceeded"
-"An implementation or administrative imposed limit has been exceeded."
-
-153
-"Payload format invalid"
-"The Will Payload does not match the specified Payload Format Indicator."
-
-154
-"Retain not supported"
-"The Server does not support retained messages, and Will Retain was set to 1."
-
-155
-"QoS not supported"
-"The Server does not support the QoS set in Will QoS."
-
-156
-"Use another server"
-"The Client should temporarily use another server."
-
-157
-"Server moved"
-"The Client should permanently use another server."
-
-159
-"Connection rate exceeded"
-"The connection rate limit has been exceeded."
-]
 
 make-message: funk [
 	type [word!]
@@ -221,9 +104,77 @@ parse-message: funk [msg][
 	reason-code: select connect-reason-codes take msg
 
 	; -- CONNACK properties
-	length: decode-integer msg
+	length: probe decode-integer msg
 
+	data: take/part msg length
+	while [not empty? data][
+		switch take data [
+			11h [ ; session expiry interval
+				value: decode-long-int data
+				print ["session expiry interval:" value]
+			]
+			21h [ ; recive maximum
+				value: decode-short-int data
+				print ["receive maximum:" value]
+			]
+			24h [ ; maximum QoS
+				value: take data
+				print ["QoS:" value]
+			]
+			25h [ ; retain available
+				value: take data
+				print ["Retain available:" value]
+			]
+			27h [ ; maximum packet size
+				value: decode-long-int data
+				print ["Max packet size:" value]
+			]
+			12h [ ; assigned client identifier
+				value: decode-string data
+				print ["Client identifier:" value]
+			]
+			22h [ ; topic alias maximum
+				value: decode-short-int data
+				print ["Topic alias maximum:" value]
+			]
+			1Fh [ ; reason string
+				value: decode-string data
+				print ["Reason string:" value]
+			]
+			26h [ ; user property
+				value: decode-string data
+				print ["User prop key:" value]
+				value: decode-string data
+				print ["User prop data:" value]
+			]
+			2Ah [ ; shared subscription available
+				value: take data
+				print ["Shared sub avail:" value]
+			]
+			13h [ ; keep server alive
+				value: decode-short-int data
+				print ["Keep server alive:" value]
+			]
+			1Ah [ ; response information
+				value: decode-string data
+				print ["Response information:" value]
+			]
+			1Ch [ ; server reference
+				value: decode-string data
+				print ["Server eference:" value]
+			]
+			15h [ ; authentication method
+				value: decode-string data
+				print ["Auth method:" value]
+			]
+			16h [ ; authentication data
+				length: decode-integer data
+				value: take/part data length
+				print ["Auth data length:" length]
+			]
 
+		]	
+	]
 
 	reduce [
 		type
@@ -362,57 +313,4 @@ make-packet-identifier: func [type [word!]][
 	#{1234}
 ]
 
-properties: [
-	PUBLISH will-properties [
-		1 payload-format-indicator				[byte]
-		2 message-expiry-interval				[4 byte]
-		3 content-type							[string]
-		8 response-topic						[string]
-		9 correlation-data						[binary]
-	]
-	PUBLISH SUBSCRIBE [
-		11 subscription-identifier				[var-byte-int]
-	]
-	CONNECT CONNACK DISCONNECT [
-		17 session-expiry-interval				[4 byte] 
-	]
-	CONNACK [
-		18 assigned-client-identifier			[string]
-		19 server-keep-alive					[2 byte]
-		26 response-information					[string]
-	]
-	CONNECT CONNACK AUTH [
-		21 authentication-method				[string]
-		22 authentication-data					[binary]
-	]
-	CONNECT [
-		23 request-problem-information			[byte]
-		25 request-response-information			[byte]
-	]
-	will-properties [
-		24 will-delay-interval					[4 byte]
-	]
-	CONNACK DISCONNECT [
-		28 server-reference						[string]
-	]
-	CONNACK PUBACK PUBREC PUBREL PUBCOMP SUBACK UNSUBACK DISCONNECT AUTH [
-		31 reason-string						[string string]
-	]
-	CONNECT CONNACK [
-		33 receive-maximum						[2 byte]
-		34 topic-alias-maximum					[2 byte]
-		39 maximum-packet-size					[4 byte]
-	]
-	CONNECT CONNACK PUBLISH will-properties PUBACK PUBREC PUBREL PUBCOMP
-	SUBSCRIBE SUBACK UNSUBSCRIBE UNSUBACK DISCONNECT AUTH [
-		38 user-property						[string string]
-	]
-	CONNACK [
-		36 maximum-qos							[byte]
-		37 retain-available						[byte]
-		40 wildcard-subscription-available		[byte]
-		41 subscription-identifier-available	[byte]
-		42 shared-subscription-available		[byte]
-	]
-]
 
