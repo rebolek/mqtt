@@ -5,13 +5,15 @@ Red[]
 
 mqtt: context [
 	state: none
+	packet-id: none
 ]
 
 
 
 encode-string: func [string [string!]][
 	string: to binary! string
-	insert string skip to binary! length? string 2
+;	insert string skip to binary! length? string 2
+	insert string enc-int16 length? string
 	string
 ]
 
@@ -55,9 +57,9 @@ decode-integer: func [data [binary!] /local multiplier value enc-byte][
 	value
 ]
 
-decode-short-int: func [data [binary!]][to integer! take/part data 2]
+dec-int16: decode-short-int: func [data [binary!]][to integer! take/part data 2]
 
-decode-long-int: func [data [binary!]][to integer! take/part data 4]
+dec-int32: decode-long-int: func [data [binary!]][to integer! take/part data 4]
 
 make-message: funk [
 	type [word!]
@@ -91,6 +93,12 @@ make-message: funk [
 	out
 ]
 
+; --- TODO: Context start here
+
+session-present?:
+reason-code:
+	none
+
 parse-message: funk [msg][
 	msg: copy msg ; NOTE just for testing
 	; -- packet type
@@ -104,25 +112,37 @@ parse-message: funk [msg][
 
 	; -- variable header
 	;
+	switch type [
+		CONNACK	[process-connack msg]
+		SUBACK	[process-suback msg]
+	]
+
+	reduce [
+		type
+		session-present?
+		reason-code
+	]
+]
+
+process-connack: func [msg][
 	; The Variable Header of the CONNACK Packet contains the following
-	; fields in the order: 
+	; fields in the order:
 	;
 	; - Connect Acknowledge Flags
 	; - Connect Reason Code
 	; - Properties
 
 	; ---- connect acknowledge flags
-	byte: take msg
+	/local byte: take msg
 	if byte > 1 [do make error! "Connect acknowledge flag bits 1-7 aren't 0"]
-	/local session-present?: make logic! byte and 1
+	session-present?: make logic! byte and 1
 
 	; ---- connect reason code
 	reason-code: select connect-reason-codes take msg
 
 	; -- CONNACK properties
-	length: probe decode-integer msg
-
-	data: take/part msg length
+	/local length: probe decode-integer msg
+	/local data: take/part msg length
 	while [not empty? data][
 		switch take data [
 			11h [ ; session expiry interval
@@ -188,15 +208,58 @@ parse-message: funk [msg][
 				value: take/part data length
 				print ["Auth data length:" length]
 			]
-
-		]	
-	]
-
-	reduce [
-		type
-		session-present?
+		]
 	]
 ]
+
+process-suback: func [msg][
+
+	; -- SUBACK variable header
+
+	; ---- Packet identifier
+
+	/local packet-id: dec-int16 msg
+	either equal? packet-id mqtt/packet-id [
+		print ["SUBACK: Packet ID:" packet-id]
+	][
+		print ["SUBACK Packet ID:" packet-id "Expected:" mqtt/packet-id]
+		do make error! "Packet identifier differs"
+	]
+
+	; ---- Properties
+
+	/local length: dec-int16 msg
+	while [length > 0][
+		switch msg/1 [
+			1Fh [ ; reason string
+				/local reason: decode-string msg
+				print ["Reason:" reason]
+				; 3: 1 byte identifier + 2 bytes string length
+				length: length - 3 - length? to binary! reason
+			]
+			26h [ ; user property
+				/local key: decode-string msg
+				/local value: decode-string msg
+				print ["User prop:" key #":" value]
+				; 5: 1 byte identifier + 2*2 bytes string length
+				length: length - 5 - (length? to binary! key) - (length? to binary! value)
+			]
+		]
+	]
+
+	; -- SUBACK Payload
+	until [
+		; as it's possible to SUBSCRIBE to multiple topics
+		; server may send multiple payloads, one for each topic
+		; TODO: Store SUBSCRIBE topics so payloads can be assigned to topics
+		/local reason: select suback-reason-codes take msg
+
+		empty? msg
+	]
+
+]
+
+; ---- TODO: Context ends here
 
 make-conn-header: funk [
 	flags
@@ -343,6 +406,7 @@ make-subscribe-message: funk [
 	; there must be PI handling, so PIs can be reused
 
 	/local packet-id: random 65535
+	mqtt/packet-id: packet-id
 	print ["Packet ID:" packet-id enc-int16 packet-id]
 	append var-header enc-int16 packet-id
 

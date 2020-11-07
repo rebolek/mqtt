@@ -28,7 +28,6 @@ make-connection: func [][
 client: open tcp://127.0.0.1:1883
 ;client: open tcp://192.168.54.31:1833
 
-b: make-connection
 
 start: now/precise
 
@@ -52,16 +51,8 @@ client/awake: func [event /local port] [
 
 run-client: does [
 
-	if none? system/view [
-		wait client
-		print "1st Done"
-
-		
-	;	repeat n 120 [
-	;		?? n
-			open client
-			wait client
-	;	]
-	]
+	b: make-connection
+	insert client b
+	wait client
 
 ]

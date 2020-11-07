@@ -124,6 +124,55 @@ connect-reason-codes: [
 "The connection rate limit has been exceeded."
 ]
 
+suback-reason-codes: [
+00h
+"Granted QoS 0"
+"The subscription is accepted and the maximum QoS sent will be QoS 0. This might be a lower QoS than was requested."
+
+01h
+"Granted QoS 1"
+"The subscription is accepted and the maximum QoS sent will be QoS 1. This might be a lower QoS than was requested."
+
+02h
+"Granted QoS 2"
+"The subscription is accepted and any received QoS will be sent to this subscription."
+80h
+"Unspecified error"
+"The subscription is not accepted and the Server either does not wish to reveal the reason or none of the other Reason Codes apply."
+
+83h
+"Implementation specific error"
+"The SUBSCRIBE is valid but the Server does not accept it."
+
+87h
+"Not authorized"
+"The Client is not authorized to make this subscription."
+
+8Fh
+"Topic Filter invalid"
+"The Topic Filter is correctly formed but is not allowed for this Client."
+
+91h
+"Packet Identifier in use"
+"The specified Packet Identifier is already in use."
+
+97h
+"Quota exceeded"
+"An implementation or administrative imposed limit has been exceeded."
+
+9Eh
+"Shared Subscriptions not supported"
+"The Server does not support Shared Subscriptions for this Client."
+
+A1h
+"Subscription Identifiers not supported"
+"The Server does not support Subscription Identifiers; the subscription is not accepted."
+
+A2h
+"Wildcard Subscriptions not supported"
+"The Server does not support Wildcard Subscriptions; the subscription is not accepted."
+]
+
 properties: [
 	PUBLISH will-properties [
 		1 payload-format-indicator				[byte]
