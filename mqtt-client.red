@@ -7,6 +7,7 @@ next step:
 
 - send SUBSCRIBE message
 - receive SUBACK reply
+- send PUBLISH message
 	}
 ]
 
@@ -18,14 +19,14 @@ make-connection: func [][
 	/local request: copy #{}
 	append request make-conn-header []
 	append request make-payload
-	insert request encode-integer length? request
+	insert request enc-int length? request
 	insert request #{10}
 	request
 ]
 
-
 ;client: open tcp://192.168.54.102:1883
 client: open tcp://127.0.0.1:1883
+;client: open tcp://192.168.54.31:1833
 
 b: make-connection
 
@@ -38,7 +39,12 @@ client/awake: func [event /local port] [
 		connect [insert port b]
 		read [
 			parse-message port/data
-		;	close port
+			; we received message and now we can send new one
+			if mqtt/state = 'CONNACK [
+				; send subscribe message
+				; NOTE: this is just an example and must be user-configurable
+				insert port make-subscribe-message "$SYS"
+			]
 		]
 		wrote [copy port]
 	]

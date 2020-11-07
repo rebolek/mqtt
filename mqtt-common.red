@@ -3,6 +3,12 @@ Red[]
 #include %funk.red
 #include %mqtt-data.red
 
+mqtt: context [
+	state: none
+]
+
+
+
 encode-string: func [string [string!]][
 	string: to binary! string
 	insert string skip to binary! length? string 2
@@ -14,7 +20,7 @@ decode-string: funk [data [binary!]][
 	to string! take/part data to integer! length
 ]
 
-encode-integer: func [value [integer!] /local out enc-byte][
+enc-int: func [value [integer!] /local out enc-byte][
 	out: copy #{}
 	until [
 		enc-byte: value // 128
@@ -24,6 +30,14 @@ encode-integer: func [value [integer!] /local out enc-byte][
 		value = 0
 	]
 	out
+]
+
+enc-int8: func [value [integer!] /local out][
+	skip to binary! value 3
+]
+
+enc-int16: func [value [integer!] /local out][
+	skip to binary! value 2
 ]
 
 decode-integer: func [data [binary!] /local multiplier value enc-byte][
@@ -44,7 +58,6 @@ decode-integer: func [data [binary!] /local multiplier value enc-byte][
 decode-short-int: func [data [binary!]][to integer! take/part data 2]
 
 decode-long-int: func [data [binary!]][to integer! take/part data 4]
-
 
 make-message: funk [
 	type [word!]
@@ -85,6 +98,9 @@ parse-message: funk [msg][
 	/local type: pick message-types byte >> 4
 	/local flags: byte and 0Fh
 	/local length: decode-integer msg
+
+	print ["Type:" type]
+	mqtt/state: type
 
 	; -- variable header
 	;
@@ -255,7 +271,7 @@ make-conn-header: funk [
 
 	; ---- authentication data (opt) [16 1 byte]  - auth method must be included
 
-	insert props encode-integer length? props
+	insert props enc-int length? props
 
 	append out props
 
@@ -312,5 +328,64 @@ make-packet-identifier: func [type [word!]][
 	; TODO: make proper packet identifier
 	#{1234}
 ]
+
+make-subscribe-message: funk [
+	topic [string! path! block!]
+][
+	/local length: 0
+
+	; -- var header
+	/local var-header: clear #{}
+	; ---- packet identifier
+
+	; TODO: should be separate function
+	; create unique packet identifier (PI)
+	; there must be PI handling, so PIs can be reused
+
+	/local packet-id: random 65535
+	print ["Packet ID:" packet-id enc-int16 packet-id]
+	append var-header enc-int16 packet-id
+
+	; ---- properties
+
+	/local vh-props: clear #{}
+	
+	; ------ subscription identifier
+	[opt 0Bh var-int] ; can't be zero
+
+	; ------ user property
+	[any 26h string string]
+	
+	append var-header enc-int length? vh-props
+	append var-header vh-props
+
+	length: length + length? var-header
+
+	; ---- subscripe payload
+	/local payload: clear #{}
+	topic: append clear [] topic
+	foreach /local tpc topic [
+		/local data: form tpc
+		append payload enc-int16 length? data
+		append payload data
+		/local sub-opt: 0
+		sub-opt: sub-opt or (0 << 6)	; [2 bit] TODO: QoS
+		sub-opt: sub-opt or (0 << 5)	; [1 bit] TODO: No Local option
+		sub-opt: sub-opt or (0 << 4)	; [1 bit] TODO: Retain As Published
+		sub-opt: sub-opt or (0 << 2)	; [2 bit] TODO: Retain Handling
+		sub-opt: sub-opt or 0			; [2 bit] Reserved
+		append payload sub-opt
+	]
+
+	length: length + length? payload
+
+	rejoin [ #{}
+		82h	; -- SUBSCRIBE header
+		enc-int length
+		var-header
+		payload
+	]
+]
+
 
 
