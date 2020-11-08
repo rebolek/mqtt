@@ -10,14 +10,14 @@ mqtt: context [
 
 
 
-encode-string: func [string [string!]][
+enc-string: func [string [string!]][
 	string: to binary! string
 ;	insert string skip to binary! length? string 2
 	insert string enc-int16 length? string
 	string
 ]
 
-decode-string: funk [data [binary!]][
+dec-string: funk [data [binary!]][
 	/local length: take/part data 2
 	to string! take/part data to integer! length
 ]
@@ -42,7 +42,7 @@ enc-int16: func [value [integer!] /local out][
 	skip to binary! value 2
 ]
 
-decode-integer: func [data [binary!] /local multiplier value enc-byte][
+dec-int: func [data [binary!] /local multiplier value enc-byte][
 	multiplier: 1
 	value: 0
 	until [
@@ -57,9 +57,9 @@ decode-integer: func [data [binary!] /local multiplier value enc-byte][
 	value
 ]
 
-dec-int16: decode-short-int: func [data [binary!]][to integer! take/part data 2]
+dec-int16: func [data [binary!]][to integer! take/part data 2]
 
-dec-int32: decode-long-int: func [data [binary!]][to integer! take/part data 4]
+dec-int32: func [data [binary!]][to integer! take/part data 4]
 
 make-message: funk [
 	type [word!]
@@ -105,7 +105,7 @@ parse-message: funk [msg][
 	/local byte: take msg
 	/local type: pick message-types byte >> 4
 	/local flags: byte and 0Fh
-	/local length: decode-integer msg
+	/local length: dec-int msg
 
 	print ["Type:" type]
 	mqtt/state: type
@@ -141,16 +141,16 @@ process-connack: func [msg][
 	reason-code: select connect-reason-codes take msg
 
 	; -- CONNACK properties
-	/local length: probe decode-integer msg
+	/local length: probe dec-int msg
 	/local data: take/part msg length
 	while [not empty? data][
 		switch take data [
 			11h [ ; session expiry interval
-				value: decode-long-int data
+				value: dec-int32 data
 				print ["session expiry interval:" value]
 			]
 			21h [ ; recive maximum
-				value: decode-short-int data
+				value: dec-int16 data
 				print ["receive maximum:" value]
 			]
 			24h [ ; maximum QoS
@@ -162,25 +162,25 @@ process-connack: func [msg][
 				print ["Retain available:" value]
 			]
 			27h [ ; maximum packet size
-				value: decode-long-int data
+				value: dec-int32 data
 				print ["Max packet size:" value]
 			]
 			12h [ ; assigned client identifier
-				value: decode-string data
+				value: dec-string data
 				print ["Client identifier:" value]
 			]
 			22h [ ; topic alias maximum
-				value: decode-short-int data
+				value: dec-int16 data
 				print ["Topic alias maximum:" value]
 			]
 			1Fh [ ; reason string
-				value: decode-string data
+				value: dec-string data
 				print ["Reason string:" value]
 			]
 			26h [ ; user property
-				value: decode-string data
+				value: dec-string data
 				print ["User prop key:" value]
-				value: decode-string data
+				value: dec-string data
 				print ["User prop data:" value]
 			]
 			2Ah [ ; shared subscription available
@@ -188,23 +188,23 @@ process-connack: func [msg][
 				print ["Shared sub avail:" value]
 			]
 			13h [ ; keep server alive
-				value: decode-short-int data
+				value: dec-int16 data
 				print ["Keep server alive:" value]
 			]
 			1Ah [ ; response information
-				value: decode-string data
+				value: dec-string data
 				print ["Response information:" value]
 			]
 			1Ch [ ; server reference
-				value: decode-string data
+				value: dec-string data
 				print ["Server eference:" value]
 			]
 			15h [ ; authentication method
-				value: decode-string data
+				value: dec-string data
 				print ["Auth method:" value]
 			]
 			16h [ ; authentication data
-				length: decode-integer data
+				length: dec-int data
 				value: take/part data length
 				print ["Auth data length:" length]
 			]
@@ -232,14 +232,14 @@ process-suback: func [msg][
 	while [length > 0][
 		switch msg/1 [
 			1Fh [ ; reason string
-				/local reason: decode-string msg
+				/local reason: dec-string msg
 				print ["Reason:" reason]
 				; 3: 1 byte identifier + 2 bytes string length
 				length: length - 3 - length? to binary! reason
 			]
 			26h [ ; user property
-				/local key: decode-string msg
-				/local value: decode-string msg
+				/local key: dec-string msg
+				/local value: dec-string msg
 				print ["User prop:" key #":" value]
 				; 5: 1 byte identifier + 2*2 bytes string length
 				length: length - 5 - (length? to binary! key) - (length? to binary! value)
@@ -274,7 +274,7 @@ make-conn-header: funk [
 
 	out: copy #{}
 
-	append out encode-string "MQTT"	; Protocol Name
+	append out enc-string "MQTT"	; Protocol Name
 	append out #{05}	; Protocol Version
 
 	connect-flags: #{00}
@@ -357,7 +357,7 @@ make-payload: funk [][
 
 	; -- client identifier
 
-	append payload encode-string "redmqttv0" ; TODO: should be different for each client
+	append payload enc-string "redmqttv0" ; TODO: should be different for each client
 
 	; -- will properties (if will flag = 1)
 
