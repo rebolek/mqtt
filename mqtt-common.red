@@ -8,7 +8,7 @@ mqtt: context [
 	packet-id: none
 ]
 
-
+; -- datatype functions -----------------------------------------------------
 
 enc-string: func [string [string!]][
 	string: to binary! string
@@ -61,6 +61,17 @@ dec-int16: func [data [binary!]][to integer! take/part data 2]
 
 dec-int32: func [data [binary!]][to integer! take/part data 4]
 
+; -- end --
+
+; -- support functions
+
+make-packet-id: func [type [word!]][
+	; TODO: Now it returns random number but incremental ID may be better
+	enc-int16 random 65535
+]
+
+; -- send message -----------------------------------------------------------
+
 make-message: funk [
 	type [word!]
 	message
@@ -92,6 +103,193 @@ make-message: funk [
 	]
 	out
 ]
+
+make-conn-header: funk [
+	flags
+	/local value
+][
+	; -- CONNECT Variable Header
+
+	; The Variable Header for the CONNECT Packet contains 
+	; the following fields in this order: 
+	;
+	; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
+
+	out: copy #{}
+
+	append out enc-string "MQTT"	; Protocol Name
+	append out #{05}	; Protocol Version
+
+	connect-flags: #{00}
+	parse flags [
+		any [
+			'clean (connect-flags: connect-flags or #{02})
+		|	'will (connect-flags: connect-flags or #{04})
+		|	'qos set value integer! (
+				value: skip to binary! value << 3 3
+				connect-flags: connect-flags or #{04} or value
+			)
+		|	'retain (connect-flags: connect-flags or #{20})
+		|	'username (connect-flags: connect-flags or #{80})
+		|	'password (connect-flags: connect-flags or #{40})
+		]
+	]
+	append out connect-flags
+
+	append out #{0000}	; TODO: Keep Alive value (seconds)
+
+	; -- Properties
+
+	props: copy #{}
+
+	; ---- session expiry interval (opt) [11h 4 byte]
+
+	;append props #{1100000000}
+
+	; ---- receive maximum (opt) [21h 2 byte]
+
+	;append props #{21FFFF}
+
+	; ---- maximum packet size (opt) [27h 4 byte]
+
+	;append props #{270000FFFF}
+
+	; ---- topic alias maximum (opt) [22h 2 byte]
+
+	;append props #{22FFFF}
+
+	; ---- request response information (opt) [19h 1 byte logic]
+
+	;append props #{1901} ; zero or one
+
+	; ---- request problem information (opt) [17h 1 byte logic]
+
+	;append props #{1701} ; zero or one
+
+	; ---- user property (any) [26h string-pair]
+
+	;append props #{}
+
+	; ---- authentication method (opt) [15h string]
+
+	;append props #{}
+
+	; ---- authentication data (opt) [16 1 byte]  - auth method must be included
+
+	insert props enc-int length? props
+
+	append out props
+
+	out
+]
+
+make-payload: funk [][
+
+;	The Payload of the CONNECT packet contains one or more length-prefixed
+;	fields, whose presence is determined by the flags in the Variable Header.
+;	These fields, if present, MUST appear in the order:
+;		Client Identifier (MUST be present)
+;		Will Properties
+;		Will Topic
+;		Will Payload
+;		User Name
+;		Password
+
+	/local payload: clear #{}
+
+	; -- client identifier
+
+	append payload enc-string "redmqttv0" ; TODO: should be different for each client
+
+	; -- will properties (if will flag = 1)
+
+	; ---- property length (varlenint)
+
+	; ---- will delay interval [18h 4 byte]
+
+	; ---- payload format indicator [01h 1 byte logic]
+
+	; ---- message expiry interval [02h 4 byte]
+
+	; ---- content type [03h string]
+
+	; ---- response topic [08h string]
+
+	; ---- correlation data [09h binary]
+
+	; ---- user property [26h string pair]
+
+	; -- will topic [string] (if will flag = 1)
+
+	; -- will payload [binary] (if will flag = 1)
+
+	; -- user name [string] (if user name flag = 1)
+
+	; -- password [string] (if password flag = 1)
+
+]
+
+make-subscribe-message: funk [
+	topic [string! path! block!]
+][
+	/local length: 0
+
+	; -- var header
+	/local var-header: clear #{}
+	; ---- packet identifier
+
+	; TODO: should be separate function
+	; create unique packet identifier (PI)
+	; there must be PI handling, so PIs can be reused
+
+	/local packet-id: make-packet-id
+	mqtt/packet-id: packet-id
+	print ["Packet ID:" to integer! packet-id packet-id]
+	append var-header packet-id
+
+	; ---- properties
+
+	/local vh-props: clear #{}
+	
+	; ------ subscription identifier
+	[opt 0Bh var-int] ; can't be zero
+
+	; ------ user property
+	[any 26h string string]
+	
+	append var-header enc-int length? vh-props
+	append var-header vh-props
+
+	length: length + length? var-header
+
+	; ---- subscripe payload
+	/local payload: clear #{}
+	topic: append clear [] topic
+	foreach /local tpc topic [
+		/local data: form tpc
+		append payload enc-int16 length? data
+		append payload data
+		/local sub-opt: 0
+		sub-opt: sub-opt or (0 << 6)	; [2 bit] TODO: QoS
+		sub-opt: sub-opt or (0 << 5)	; [1 bit] TODO: No Local option
+		sub-opt: sub-opt or (0 << 4)	; [1 bit] TODO: Retain As Published
+		sub-opt: sub-opt or (0 << 2)	; [2 bit] TODO: Retain Handling
+		sub-opt: sub-opt or 0			; [2 bit] Reserved
+		append payload sub-opt
+	]
+
+	length: length + length? payload
+
+	rejoin [ #{}
+		82h	; -- SUBSCRIBE header
+		enc-int length
+		var-header
+		payload
+	]
+]
+; -- end --
+
+; -- receive message --------------------------------------------------------
 
 ; --- TODO: Context start here
 
@@ -261,195 +459,6 @@ process-suback: func [msg][
 
 ; ---- TODO: Context ends here
 
-make-conn-header: funk [
-	flags
-	/local value
-][
-	; -- CONNECT Variable Header
-
-	; The Variable Header for the CONNECT Packet contains 
-	; the following fields in this order: 
-	;
-	; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
-
-	out: copy #{}
-
-	append out enc-string "MQTT"	; Protocol Name
-	append out #{05}	; Protocol Version
-
-	connect-flags: #{00}
-	parse flags [
-		any [
-			'clean (connect-flags: connect-flags or #{02})
-		|	'will (connect-flags: connect-flags or #{04})
-		|	'qos set value integer! (
-				value: skip to binary! value << 3 3
-				connect-flags: connect-flags or #{04} or value
-			)
-		|	'retain (connect-flags: connect-flags or #{20})
-		|	'username (connect-flags: connect-flags or #{80})
-		|	'password (connect-flags: connect-flags or #{40})
-		]
-	]
-	append out connect-flags
-
-	append out #{0000}	; TODO: Keep Alive value (seconds)
-
-
-	; -- Properties
-
-	props: copy #{}
-
-	; ---- session expiry interval (opt) [11h 4 byte]
-
-	;append props #{1100000000}
-
-	; ---- receive maximum (opt) [21h 2 byte]
-
-	;append props #{21FFFF}
-
-	; ---- maximum packet size (opt) [27h 4 byte]
-
-	;append props #{270000FFFF}
-
-	; ---- topic alias maximum (opt) [22h 2 byte]
-
-	;append props #{22FFFF}
-
-	; ---- request response information (opt) [19h 1 byte logic]
-
-	;append props #{1901} ; zero or one
-
-	; ---- request problem information (opt) [17h 1 byte logic]
-
-	;append props #{1701} ; zero or one
-
-	; ---- user property (any) [26h string-pair]
-
-	;append props #{}
-
-	; ---- authentication method (opt) [15h string]
-
-	;append props #{}
-
-	; ---- authentication data (opt) [16 1 byte]  - auth method must be included
-
-	insert props enc-int length? props
-
-	append out props
-
-	out
-]
-
-make-payload: funk [][
-
-;	The Payload of the CONNECT packet contains one or more length-prefixed
-;	fields, whose presence is determined by the flags in the Variable Header.
-;	These fields, if present, MUST appear in the order:
-;		Client Identifier (MUST be present)
-;		Will Properties
-;		Will Topic
-;		Will Payload
-;		User Name
-;		Password
-
-	/local payload: clear #{}
-
-	; -- client identifier
-
-	append payload enc-string "redmqttv0" ; TODO: should be different for each client
-
-	; -- will properties (if will flag = 1)
-
-	; ---- property length (varlenint)
-
-	; ---- will delay interval [18h 4 byte]
-
-	; ---- payload format indicator [01h 1 byte logic]
-
-	; ---- message expiry interval [02h 4 byte]
-
-	; ---- content type [03h string]
-
-	; ---- response topic [08h string]
-
-	; ---- correlation data [09h binary]
-
-	; ---- user property [26h string pair]
-
-	; -- will topic [string] (if will flag = 1)
-
-	; -- will payload [binary] (if will flag = 1)
-
-	; -- user name [string] (if user name flag = 1)
-
-	; -- password [string] (if password flag = 1)
-
-]
-
-make-packet-identifier: func [type [word!]][
-	; TODO: make proper packet identifier
-	#{1234}
-]
-
-make-subscribe-message: funk [
-	topic [string! path! block!]
-][
-	/local length: 0
-
-	; -- var header
-	/local var-header: clear #{}
-	; ---- packet identifier
-
-	; TODO: should be separate function
-	; create unique packet identifier (PI)
-	; there must be PI handling, so PIs can be reused
-
-	/local packet-id: random 65535
-	mqtt/packet-id: packet-id
-	print ["Packet ID:" packet-id enc-int16 packet-id]
-	append var-header enc-int16 packet-id
-
-	; ---- properties
-
-	/local vh-props: clear #{}
-	
-	; ------ subscription identifier
-	[opt 0Bh var-int] ; can't be zero
-
-	; ------ user property
-	[any 26h string string]
-	
-	append var-header enc-int length? vh-props
-	append var-header vh-props
-
-	length: length + length? var-header
-
-	; ---- subscripe payload
-	/local payload: clear #{}
-	topic: append clear [] topic
-	foreach /local tpc topic [
-		/local data: form tpc
-		append payload enc-int16 length? data
-		append payload data
-		/local sub-opt: 0
-		sub-opt: sub-opt or (0 << 6)	; [2 bit] TODO: QoS
-		sub-opt: sub-opt or (0 << 5)	; [1 bit] TODO: No Local option
-		sub-opt: sub-opt or (0 << 4)	; [1 bit] TODO: Retain As Published
-		sub-opt: sub-opt or (0 << 2)	; [2 bit] TODO: Retain Handling
-		sub-opt: sub-opt or 0			; [2 bit] Reserved
-		append payload sub-opt
-	]
-
-	length: length + length? payload
-
-	rejoin [ #{}
-		82h	; -- SUBSCRIBE header
-		enc-int length
-		var-header
-		payload
-	]
-]
 
 
 
