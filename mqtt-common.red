@@ -5,8 +5,12 @@ Red[]
 
 mqtt: context [
 	state: none
+	type: none
 	packet-id: none
+	flags: none
+	length: none
 ]
+
 
 ; -- datatype functions -----------------------------------------------------
 
@@ -65,7 +69,7 @@ dec-int32: func [data [binary!]][to integer! take/part data 4]
 
 ; -- support functions
 
-make-packet-id: func [type [word!]][
+make-packet-id: func [][
 	; TODO: Now it returns random number but incremental ID may be better
 	enc-int16 random 65535
 ]
@@ -243,7 +247,7 @@ make-subscribe-message: funk [
 	; there must be PI handling, so PIs can be reused
 
 	/local packet-id: make-packet-id
-	mqtt/packet-id: packet-id
+	mqtt/packet-id: to integer! packet-id
 	print ["Packet ID:" to integer! packet-id packet-id]
 	append var-header packet-id
 
@@ -289,6 +293,90 @@ make-subscribe-message: funk [
 ]
 ; -- end --
 
+make-publish-message: funk [
+	topic-name [path! string!]
+	payload
+][
+	; TODO: get this from external sources
+	/local dup: 0
+	/local qos: 0
+	/local retain: 0
+
+	/local fixed-header: (3 << 4) or (dup << 3) or (qos << 2) or retain
+
+	; -- variable header
+	;	The Variable Header of the PUBLISH Packet contains 
+	;	the following fields in the order: 
+	;	- Topic Name
+	;	- Packet Identifier
+	;	- Properties
+
+	/local var-header: clear #{}
+
+	; ---- topic name
+	; [string]
+
+	append var-header enc-string form topic-name
+
+	; ---- packet identifier
+	; [if (qos > 0) int16]
+
+	; TODO
+
+	; ---- properties
+
+	/local props: clear #{}
+
+	; ------ payload format indicator
+
+	; [01h [0 unspecified-bytes | 1 utf8-string]]
+
+	; ------ message expiry interval
+
+	; [02h int32]
+
+	; ------ topic alias
+
+	; [23h int16]
+
+	; ------ response topic
+
+	; [08h string]
+
+	; ------ correlation data
+
+	; [09h binary]
+
+	; ------ user property
+
+	; [26h 2 string]
+
+	; ------ subscription identifier
+
+	; [0Bh var-int]
+
+	; ------ content type
+
+; [03h string]
+
+
+	append var-header enc-int length? props
+	append var-header props
+
+	; ---- publish payload
+
+	unless any [string? payload binary? payload][payload: form payload]
+
+	rejoin [
+		#{}
+		fixed-header
+		enc-int (length? var-header) + (length? payload)
+		var-header
+		payload
+	]
+
+]
+
 ; -- receive message --------------------------------------------------------
 
 ; --- TODO: Context start here
@@ -301,18 +389,19 @@ parse-message: funk [msg][
 	msg: copy msg ; NOTE just for testing
 	; -- packet type
 	/local byte: take msg
-	/local type: pick message-types byte >> 4
-	/local flags: byte and 0Fh
-	/local length: dec-int msg
+	mqtt/type: pick message-types byte >> 4
+	mqtt/flags: byte and 0Fh
+	mqtt/length: dec-int msg
 
 	print ["Type:" type]
-	mqtt/state: type
+	mqtt/state: mqtt/type
 
 	; -- variable header
 	;
 	switch type [
 		CONNACK	[process-connack msg]
 		SUBACK	[process-suback msg]
+		PUBLISH	[process-publish msg]
 	]
 
 	reduce [
@@ -321,6 +410,8 @@ parse-message: funk [msg][
 		reason-code
 	]
 ]
+
+#TODO "all ~process~ functions shoul dbe in same context"
 
 process-connack: func [msg][
 	; The Variable Header of the CONNACK Packet contains the following
@@ -455,6 +546,13 @@ process-suback: func [msg][
 		empty? msg
 	]
 
+]
+
+process-publish: funk [
+	msg
+][
+	/local dup: flags >> 3
+	/local qos: (flags and 7) >> 1
 ]
 
 ; ---- TODO: Context ends here
