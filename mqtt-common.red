@@ -361,7 +361,7 @@ make-publish-message: funk [
 
 	; ------ content type
 
-; [03h string]
+	; [03h string]
 
 
 	append var-header enc-int length? props
@@ -588,6 +588,43 @@ process-publish: funk [
 	; -- payload
 
 	/local payload: take/part msg length
+
+	parse payload [
+		some [
+	; ------ payload format indicator
+			01h copy value skip
+	; ------ message expiry interval
+		|	02h copy value 4 skip
+	; ------ topic alias
+		|	23h copy value 2 skip
+	; ------ response topic
+		|	08h copy length 2 skip (length: to integer! length)
+				copy value length skip
+	; ------ correlation data
+		|	09h copy length 2 skip (length: to integer! length)
+				copy value length skip
+	; ------ user property
+		|	26h copy length 2 skip (length: to integer! length)
+				copy value length skip
+				copy length 2 skip (length: to integer! length)
+				copy value length skip
+	; ------ subscription identifier
+		|	0Bh var-int-rule
+	; ------ content type
+		|	03h copy length 2 skip (length: to integer! length)
+				copy value length skip
+
+; [03h string]
+		]
+	]
+
+	; ------ payload format indicator
+
+	; [01h [0 unspecified-bytes | 1 utf8-string]]
+
+	; ------ message expiry interval
+
+	; [02h int32]
 
 	; TODO: Let's for now expect that the message is UTF-8 string
 	payload: to string! payload
