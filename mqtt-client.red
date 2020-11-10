@@ -24,14 +24,7 @@ make-connection: func [][
 	request
 ]
 
-;client: open tcp://192.168.54.102:1883
-client: open tcp://127.0.0.1:1883
-;client: open tcp://192.168.54.31:1833
-
-
-start: now/precise
-
-client/awake: func [event /local port] [
+mqtt-awake: func [event /local port] [
 	debug ["=== Client event:" event/type]
 	port: event/port
 	switch event/type [
@@ -56,6 +49,8 @@ client/awake: func [event /local port] [
 
 run-client: does [
 
+	client: open tcp://127.0.0.1:1883
+	client/awake: :mqtt-awake
 	b: make-connection
 	insert client b
 	wait client

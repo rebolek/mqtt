@@ -9,6 +9,7 @@ mqtt: context [
 	packet-id: none
 	flags: none
 	length: none
+	taken: none		; number of bytes taken from message
 ]
 
 
@@ -22,8 +23,9 @@ enc-string: func [string [string!]][
 ]
 
 dec-string: funk [data [binary!]][
-	/local length: take/part data 2
-	to string! take/part data to integer! length
+	/local length: to integer! take/part data 2
+	mqtt/taken: 2 + length
+	to string! take/part data length
 ]
 
 enc-int: func [value [integer!] /local out enc-byte][
@@ -49,8 +51,10 @@ enc-int16: func [value [integer!] /local out][
 dec-int: func [data [binary!] /local multiplier value enc-byte][
 	multiplier: 1
 	value: 0
+	mqtt/taken: 0
 	until [
 		enc-byte: take data
+		mqtt/taken: mqtt/taken + 1
 		value: (enc-byte and 127) * multiplier + value
 		if multiplier > 2'097'152 [ ; 128 ** 3
 			do make error! "Malformed variable byte integer"
@@ -61,9 +65,9 @@ dec-int: func [data [binary!] /local multiplier value enc-byte][
 	value
 ]
 
-dec-int16: func [data [binary!]][to integer! take/part data 2]
+dec-int16: func [data [binary!]][to integer! take/part data mqtt/taken: 2]
 
-dec-int32: func [data [binary!]][to integer! take/part data 4]
+dec-int32: func [data [binary!]][to integer! take/part data mqtt/taken: 4]
 
 ; -- end --
 
@@ -393,19 +397,19 @@ parse-message: funk [msg][
 	mqtt/flags: byte and 0Fh
 	mqtt/length: dec-int msg
 
-	print ["Type:" type]
+	print ["Type:" mqtt/type]
 	mqtt/state: mqtt/type
 
 	; -- variable header
 	;
-	switch type [
+	switch mqtt/type [
 		CONNACK	[process-connack msg]
 		SUBACK	[process-suback msg]
 		PUBLISH	[process-publish msg]
 	]
 
 	reduce [
-		type
+		mqtt/type
 		session-present?
 		reason-code
 	]
@@ -551,8 +555,50 @@ process-suback: func [msg][
 process-publish: funk [
 	msg
 ][
+	/local flags: mqtt/flags
+	/local length: mqtt/length
 	/local dup: flags >> 3
 	/local qos: (flags and 7) >> 1
+	/local retain: flags and 1
+
+	; -- variable header
+
+	; ---- topic name
+
+	/local topic-name: dec-string msg
+	length: length - mqtt/taken
+
+	; ---- packet identifier
+
+	if qos > 0 [
+		/local packet-id: dec-int16 msg
+		length: length - mqtt/taken
+	]
+
+	; ---- publish properties
+
+	/local prop-length: dec-int msg
+
+	props: take/part msg prop-length
+
+	; TODO: parse props
+
+	length: length - mqtt/taken
+
+	; -- payload
+
+	/local payload: take/part msg length
+
+	; TODO: Let's for now expect that the message is UTF-8 string
+	payload: to string! payload
+
+	print [
+		"TOPIC:" topic-name newline
+		"LNGTH:" length newline
+		"PRLEN:" prop-length newline
+		"PAYLD:" payload
+	]
+
 ]
 
 ; ---- TODO: Context ends here
