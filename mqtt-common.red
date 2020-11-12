@@ -1,4 +1,30 @@
-Red[]
+Red[
+
+	Notes: [
+		#commands
+
+		CONNECT		done		(partially)
+		CONNACK		done		(partially)
+		PUBLISH		done		(partially)
+		PUBACK		done		(partially)
+		PUBREC		todo
+		PUBREL		todo
+		PUBCOMP		todo
+		SUBSCRIBE	done		(partially)
+		SUBACK		done		(partially)
+		UNSUBSCRIBE	todo
+		UNSUBACK	todo
+		PINGREQ		done
+		PINGRESP	done
+		DISCONNECT	todo
+		AUTH		todo
+
+		#behavior
+
+		QoS			todo
+		sessions	todo
+	]
+]
 
 #include %funk.red
 #include %mqtt-data.red
@@ -191,7 +217,7 @@ make-conn-header: funk [
 	out
 ]
 
-make-payload: funk [][
+make-conn-payload: funk [][
 
 ;	The Payload of the CONNECT packet contains one or more length-prefixed
 ;	fields, whose presence is determined by the flags in the Variable Header.
@@ -378,8 +404,11 @@ make-publish-message: funk [
 		var-header
 		payload
 	]
-
 ]
+
+make-pingreq-message: func [][#{C000}]
+
+make-pingresp-message: func [][#{D000}]
 
 ; -- receive message --------------------------------------------------------
 
@@ -613,8 +642,6 @@ process-publish: funk [
 	; ------ content type
 		|	03h copy length 2 skip (length: to integer! length)
 				copy value length skip
-
-; [03h string]
 		]
 	]
 
