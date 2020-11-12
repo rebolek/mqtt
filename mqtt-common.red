@@ -3,21 +3,23 @@ Red[
 	Notes: [
 		#commands
 
-		CONNECT		done		(partially)
-		CONNACK		done		(partially)
-		PUBLISH		done		(partially)
-		PUBACK		done		(partially)
-		PUBREC		todo
-		PUBREL		todo
-		PUBCOMP		todo
-		SUBSCRIBE	done		(partially)
-		SUBACK		done		(partially)
-		UNSUBSCRIBE	todo
-		UNSUBACK	todo
-		PINGREQ		done
-		PINGRESP	done
-		DISCONNECT	todo
-		AUTH		todo
+		message		make	process	status
+
+		CONNECT		done	todo	(partially)
+		CONNACK		todo	done	(partially)
+		PUBLISH		done	todo	(partially)
+		PUBACK		todo	done	(partially)
+		PUBREC		todo	todo
+		PUBREL		todo	todo
+		PUBCOMP		todo	todo
+		SUBSCRIBE	done	todo	(partially)
+		SUBACK		done	done	(make: untested done: partially)
+		UNSUBSCRIBE	todo	todo
+		UNSUBACK	todo	todo
+		PINGREQ		done	todo
+		PINGRESP	done	todo
+		DISCONNECT	todo	todo
+		AUTH		todo	todo
 
 		#behavior
 
@@ -321,7 +323,49 @@ make-subscribe-message: funk [
 		payload
 	]
 ]
-; -- end --
+
+make-suback-messagge: funk [][
+
+	/local length: 0
+
+	; -- variable header
+
+	/local var-header: clear #{}
+	append var-header mqqt/packet-id
+
+	; ---- properties
+
+	/local prop-length: 0
+	/local props: clear #{}
+
+	; ------ reason string
+
+	#TODO [1Fh string]
+
+	; ------ user property
+
+	#TODO [26h string string]
+
+	append var-header props
+
+	; ---- payload
+
+	#TODO 'SUBACK-REASON-CODES
+
+	payload: #{00} ; placeholder: Granted QoS 0
+
+	length: (length? var-header) + (length? payload)
+
+	rejoin [
+		#{}
+		#{90}
+		enc-int length
+		var-header
+		payload
+	]
+]
+
+
 
 make-publish-message: funk [
 	topic-name [path! string!]
