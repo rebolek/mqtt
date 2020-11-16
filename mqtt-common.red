@@ -25,6 +25,14 @@ Red[
 
 		QoS			todo
 		sessions	todo
+
+
+		#Usage
+
+		##CONNECT
+
+		make-message 'CONNECT none none ; empty flags
+		make-message 'CONNECT [flags [flags here]]
 	]
 ]
 
@@ -109,27 +117,35 @@ make-packet-id: func [][
 ; -- send message -----------------------------------------------------------
 
 make-message: funk [
-	type [word!]
-	message
-	/local packet-type flags byte
+	type	[word!]
+	header	[none! block!]
+	message	[none! string!] ; TODO: Add more types
 ][
-	out: copy #{}
+#NOTES [
+	working-support: PINGREQ
+]
+
+	/local out: copy #{}
 	; control packet type
-	packet-type: index? find message-types type
-	flags: select reserved-flags type
-	byte: (packet-type << 4) or flags
+	/local packet-type: index? find message-types type
+	/local flags: select reserved-flags type
+	/local byte: (packet-type << 4) or flags
 	append out byte
-	; remaining length
-	; TODO: append 2 bytes of remaining length
-	; variable header
-	; packet identifier
+	; -- remaining length
+	/local length: 0 ; TODO: probably not needed
+
+	; -- variable header
+	/local var-header: clear #{}
+
+	; -- packet identifier
 	if find [
 		PUBLISH PUBACK PUBREC PUBREL PUBCOMP
 		SUBSCRIBE SUBACK UNSUBSCRIBE UNSUBACK
 	] type [
 		append out make-packet-identifier type
 	]
-	; properties
+
+	; -- properties
 	if /local type-id: find [
 		CONNECT CONNACK PUBLISH PUBACK PUBREC PUBREL PUBCOMP SUBSCRIBE
 		SUBACK UNSUBSCRIBE UNSUBACK DISCONNECT AUTH
@@ -137,133 +153,164 @@ make-message: funk [
 		; property length
 		; TODO set var-byte-int propert length
 	]
-	out
-]
 
-make-conn-header: funk [
-	flags
-	/local value
-][
-	; -- CONNECT Variable Header
-
-	; The Variable Header for the CONNECT Packet contains 
-	; the following fields in this order: 
-	;
-	; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
-
-	out: copy #{}
-
-	append out enc-string "MQTT"	; Protocol Name
-	append out #{05}	; Protocol Version
-
-	connect-flags: #{00}
-	parse flags [
-		any [
-			'clean (connect-flags: connect-flags or #{02})
-		|	'will (connect-flags: connect-flags or #{04})
-		|	'qos set value integer! (
-				value: skip to binary! value << 3 3
-				connect-flags: connect-flags or #{04} or value
-			)
-		|	'retain (connect-flags: connect-flags or #{20})
-		|	'username (connect-flags: connect-flags or #{80})
-		|	'password (connect-flags: connect-flags or #{40})
+	var-header: switch type [
+		CONNECT [
+			flags: any [
+				all [
+					header
+					select header 'flags ; TODO: use parse
+				]
+				[]
+			]
+			make-header/connect flags
 		]
 	]
-	append out connect-flags
 
-	append out #{0000}	; TODO: Keep Alive value (seconds)
 
-	; -- Properties
+	length: enc-int length? var-header
+	append out length
+	append out var-header
 
-	props: copy #{}
-
-	; ---- session expiry interval (opt) [11h 4 byte]
-
-	;append props #{1100000000}
-
-	; ---- receive maximum (opt) [21h 2 byte]
-
-	;append props #{21FFFF}
-
-	; ---- maximum packet size (opt) [27h 4 byte]
-
-	;append props #{270000FFFF}
-
-	; ---- topic alias maximum (opt) [22h 2 byte]
-
-	;append props #{22FFFF}
-
-	; ---- request response information (opt) [19h 1 byte logic]
-
-	;append props #{1901} ; zero or one
-
-	; ---- request problem information (opt) [17h 1 byte logic]
-
-	;append props #{1701} ; zero or one
-
-	; ---- user property (any) [26h string-pair]
-
-	;append props #{}
-
-	; ---- authentication method (opt) [15h string]
-
-	;append props #{}
-
-	; ---- authentication data (opt) [16 1 byte]  - auth method must be included
-
-	insert props enc-int length? props
-
-	append out props
+	; TODO: append out payload
 
 	out
 ]
 
-make-conn-payload: funk [][
+make-header: context [
 
-;	The Payload of the CONNECT packet contains one or more length-prefixed
-;	fields, whose presence is determined by the flags in the Variable Header.
-;	These fields, if present, MUST appear in the order:
-;		Client Identifier (MUST be present)
-;		Will Properties
-;		Will Topic
-;		Will Payload
-;		User Name
-;		Password
+	connect: funk [
+		flags
+		/local value
+	][
+		; -- CONNECT Variable Header
 
-	/local payload: clear #{}
+		; The Variable Header for the CONNECT Packet contains 
+		; the following fields in this order: 
+		;
+		; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
 
-	; -- client identifier
+		out: copy #{}
 
-	append payload enc-string "redmqttv0" ; TODO: should be different for each client
+		append out enc-string "MQTT"	; Protocol Name
+		append out #{05}	; Protocol Version
 
-	; -- will properties (if will flag = 1)
+		connect-flags: #{00}
+		parse flags [
+			any [
+				'clean (connect-flags: connect-flags or #{02})
+			|	'will (connect-flags: connect-flags or #{04})
+			|	'qos set value integer! (
+					value: skip to binary! value << 3 3
+					connect-flags: connect-flags or #{04} or value
+				)
+			|	'retain (connect-flags: connect-flags or #{20})
+			|	'username (connect-flags: connect-flags or #{80})
+			|	'password (connect-flags: connect-flags or #{40})
+			]
+		]
+		append out connect-flags
 
-	; ---- property length (varlenint)
+		append out #{0000}	; TODO: Keep Alive value (seconds)
 
-	; ---- will delay interval [18h 4 byte]
+		; -- Properties
 
-	; ---- payload format indicator [01h 1 byte logic]
+		props: copy #{}
 
-	; ---- message expiry interval [02h 4 byte]
+		; ---- session expiry interval (opt) [11h 4 byte]
 
-	; ---- content type [03h string]
+		;append props #{1100000000}
 
-	; ---- response topic [08h string]
+		; ---- receive maximum (opt) [21h 2 byte]
 
-	; ---- correlation data [09h binary]
+		;append props #{21FFFF}
 
-	; ---- user property [26h string pair]
+		; ---- maximum packet size (opt) [27h 4 byte]
 
-	; -- will topic [string] (if will flag = 1)
+		;append props #{270000FFFF}
 
-	; -- will payload [binary] (if will flag = 1)
+		; ---- topic alias maximum (opt) [22h 2 byte]
 
-	; -- user name [string] (if user name flag = 1)
+		;append props #{22FFFF}
 
-	; -- password [string] (if password flag = 1)
+		; ---- request response information (opt) [19h 1 byte logic]
 
+		;append props #{1901} ; zero or one
+
+		; ---- request problem information (opt) [17h 1 byte logic]
+
+		;append props #{1701} ; zero or one
+
+		; ---- user property (any) [26h string-pair]
+
+		;append props #{}
+
+		; ---- authentication method (opt) [15h string]
+
+		;append props #{}
+
+		; ---- authentication data (opt) [16 1 byte]  - auth method must be included
+
+		insert props enc-int length? props
+
+		append out props
+
+		out
+	]
 ]
+
+; -- end of MAKE-HEADER context --
+
+make-payload: context [
+
+	connect: funk [][
+
+	;	The Payload of the CONNECT packet contains one or more length-prefixed
+	;	fields, whose presence is determined by the flags in the Variable Header.
+	;	These fields, if present, MUST appear in the order:
+	;		Client Identifier (MUST be present)
+	;		Will Properties
+	;		Will Topic
+	;		Will Payload
+	;		User Name
+	;		Password
+
+		/local payload: clear #{}
+
+		; -- client identifier
+
+		append payload enc-string "redmqttv0" ; TODO: should be different for each client
+
+		; -- will properties (if will flag = 1)
+
+		; ---- property length (varlenint)
+
+		; ---- will delay interval [18h 4 byte]
+
+		; ---- payload format indicator [01h 1 byte logic]
+
+		; ---- message expiry interval [02h 4 byte]
+
+		; ---- content type [03h string]
+
+		; ---- response topic [08h string]
+
+		; ---- correlation data [09h binary]
+
+		; ---- user property [26h string pair]
+
+		; -- will topic [string] (if will flag = 1)
+
+		; -- will payload [binary] (if will flag = 1)
+
+		; -- user name [string] (if user name flag = 1)
+
+		; -- password [string] (if password flag = 1)
+
+	]
+]
+
+; -- end of MAKE-PAYLOAD context --
 
 make-subscribe-message: funk [
 	topic [string! path! block!]
@@ -273,10 +320,6 @@ make-subscribe-message: funk [
 	; -- var header
 	/local var-header: clear #{}
 	; ---- packet identifier
-
-	; TODO: should be separate function
-	; create unique packet identifier (PI)
-	; there must be PI handling, so PIs can be reused
 
 	/local packet-id: make-packet-id
 	mqtt/packet-id: to integer! packet-id
@@ -479,6 +522,7 @@ parse-message: funk [msg][
 		CONNACK	[process-connack msg]
 		SUBACK	[process-suback msg]
 		PUBLISH	[process-publish msg]
+		PINGREQ	[process-ping msg]
 	]
 
 	reduce [
@@ -488,7 +532,7 @@ parse-message: funk [msg][
 	]
 ]
 
-#TODO "all ~process~ functions shoul dbe in same context"
+#TODO "all ~process~ functions should be in same context"
 
 process-connack: func [msg][
 	; The Variable Header of the CONNACK Packet contains the following
@@ -707,6 +751,10 @@ process-publish: funk [
 		"PAYLD:" payload
 	]
 
+]
+
+process-ping: func [msg][
+	
 ]
 
 ; ---- TODO: Context ends here
