@@ -154,7 +154,7 @@ make-message: funk [
 		; TODO set var-byte-int propert length
 	]
 
-	var-header: switch type [
+	/local var-header: switch type [
 		CONNECT [
 			flags: any [
 				all [
@@ -173,6 +173,11 @@ make-message: funk [
 	append out var-header
 
 	; TODO: append out payload
+	/local payload: switch type [
+		CONNECT [
+			make-payload/connect flags
+		]
+	]
 
 	out
 ]
@@ -180,7 +185,7 @@ make-message: funk [
 make-header: context [
 
 	connect: funk [
-		flags
+		flags ; TODO: should take properties, not just flags
 		/local value
 	][
 		; -- CONNECT Variable Header
@@ -190,12 +195,12 @@ make-header: context [
 		;
 		; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
 
-		out: copy #{}
+		/local out: copy #{}
 
 		append out enc-string "MQTT"	; Protocol Name
 		append out #{05}	; Protocol Version
 
-		connect-flags: #{00}
+		/local connect-flags: #{00}
 		parse flags [
 			any [
 				'clean (connect-flags: connect-flags or #{02})
@@ -263,7 +268,7 @@ make-header: context [
 
 make-payload: context [
 
-	connect: funk [][
+	connect: funk [flags][
 
 	;	The Payload of the CONNECT packet contains one or more length-prefixed
 	;	fields, whose presence is determined by the flags in the Variable Header.
