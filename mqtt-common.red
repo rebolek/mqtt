@@ -32,15 +32,21 @@ Red[
 		##CONNECT
 
 		make-message 'CONNECT none none ; empty flags
-		make-message 'CONNECT [flags [flags here]]
+		make-message 'CONNECT [flags [flags here]] none
+
+		##PUBLISH
+
+		make-message 'PUBLISH "some/topic" "message"
+		make-message 'PUBLISH ["some/topic"] "message"
+		make-message 'PUBLISH ["some/topic" flags [qos 2]] "message"
 	]
 ]
 
 #include %funk.red
 #include %mqtt-data.red
 
-mqtt: context [
-	state: none
+state: context [
+;	state: none
 	type: none
 	packet-id: none
 	flags: none
@@ -60,7 +66,7 @@ enc-string: func [string [string!]][
 
 dec-string: funk [data [binary!]][
 	/local length: to integer! take/part data 2
-	mqtt/taken: 2 + length
+	state/taken: 2 + length
 	to string! take/part data length
 ]
 
@@ -87,10 +93,10 @@ enc-int16: func [value [integer!] /local out][
 dec-int: func [data [binary!] /local multiplier value enc-byte][
 	multiplier: 1
 	value: 0
-	mqtt/taken: 0
+	state/taken: 0
 	until [
 		enc-byte: take data
-		mqtt/taken: mqtt/taken + 1
+		state/taken: state/taken + 1
 		value: (enc-byte and 127) * multiplier + value
 		if multiplier > 2'097'152 [ ; 128 ** 3
 			do make error! "Malformed variable byte integer"
@@ -101,9 +107,9 @@ dec-int: func [data [binary!] /local multiplier value enc-byte][
 	value
 ]
 
-dec-int16: func [data [binary!]][to integer! take/part data mqtt/taken: 2]
+dec-int16: func [data [binary!]][to integer! take/part data state/taken: 2]
 
-dec-int32: func [data [binary!]][to integer! take/part data mqtt/taken: 4]
+dec-int32: func [data [binary!]][to integer! take/part data state/taken: 4]
 
 ; -- end --
 
@@ -116,35 +122,67 @@ make-packet-id: func [][
 
 ; -- send message -----------------------------------------------------------
 
-make-message: funk [
+context [
+
+var-header: #{}	; needs to be accessible from other functions
+payload: #{}	; dtto
+out: #{}
+
+set 'make-message funk [
 	type	[word!]
-	header	[none! block!]
-	message	[none! string!] ; TODO: Add more types
+	header	[none! block! string! path!]
+	message	[any-type!]
 ][
 #NOTES [
 	working-support: PINGREQ
 ]
+	clear out
+	clear var-header
+	clear payload
 
-	/local out: copy #{}
+	/local qos: 0
+
+	; -- fixed header
+
 	; control packet type
 	/local packet-type: index? find message-types type
 	/local flags: select reserved-flags type
+	; PUBLISH message doesn't have reserved flags, we get flags from header
+	unless flags [
+		flags: either flags: select header 'flags [
+			; flags are just words (for DUP and RETAIN) 
+			; or word followed by value (QoS)
+			/local dup: pick [0 1] not find flags 'dup
+			/local retain: pick [0 1] not find flags 'retain
+			qos: any [select flags 'qos 0] ; TODO: error handling
+			(dup << 3) or (qos << 2) or retain
+		][
+		;		flags are not required, if not present, set them to zero
+			0
+		]
+	]
 	/local byte: (packet-type << 4) or flags
 	append out byte
-	; -- remaining length
-	/local length: 0 ; TODO: probably not needed
 
 	; -- variable header
 
-	; -- packet identifier
-	if find [
-		PUBLISH PUBACK PUBREC PUBREL PUBCOMP
-		SUBSCRIBE SUBACK UNSUBSCRIBE UNSUBACK
-	] type [
-		append out make-packet-identifier type
+	; ---- PUBLISH: topic name (3.2.2.1)
+	if [type = 'PUBLISH][append var-header enc-string form header]
+
+	; ---- packet identifier
+	if any [
+		all [type = 'PUBLISH qos > 0]
+		find [
+			PUBACK PUBREC PUBREL PUBCOMP SUBSCRIBE SUBACK UNSUBSCRIBE UNSUBACK
+		] type
+	] [
+		/local packet-id: make-packet-id
+		state/packet-id: to integer! packet-id
+		print ["Packet ID:" to integer! packet-id packet-id]
+		append var-header packet-id
 	]
 
-	; -- properties
+	; ---- packet identifier
 	if /local type-id: find [
 		CONNECT CONNACK PUBLISH PUBACK PUBREC PUBREL PUBCOMP SUBSCRIBE
 		SUBACK UNSUBSCRIBE UNSUBACK DISCONNECT AUTH
@@ -153,7 +191,7 @@ make-message: funk [
 		; TODO set var-byte-int propert length
 	]
 
-	/local var-header: switch type [
+	switch type [
 		CONNECT [
 			flags: any [
 				all [
@@ -164,29 +202,30 @@ make-message: funk [
 			]
 			make-header/connect flags
 		]
-	]
-
-
-	length: length? var-header
-
-	; TODO: append out payload
-	/local payload: switch type [
-		CONNECT [
-			make-payload/connect flags
+		SUBSCRIBE [make-header/subscribe]
+		SUBACK [make-header/suback]
+		PUBLISH [
+			/local topic: either string? header [header][
+				first find header string!
+			]
+			make-header/publish topic
 		]
 	]
 
-	/local payload: switch type [
-		CONNECT [make-payload/connect]
+	switch type [
+		CONNECT [make-payload/connect flags]
 		SUBSCRIBE [make-payload/subscribe message]
+		SUBACK [make-payload/suback]
+		PUBLISH [make-payload/publish message]
 	]
 
-
-	length: length + length? payload
-	append out enc-inc length
+	append out enc-int (length? var-header) + (length? payload)
 	append out var-header
+	append out payload
 	out
 ]
+
+; -- MAKE-HEADER --
 
 make-header: context [
 
@@ -201,10 +240,10 @@ make-header: context [
 		;
 		; Protocol Name, Protocol Level, Connect Flags, Keep Alive, and Properties.
 
-		/local out: copy #{}
+		; append var-header enc-string "MQTT"	; Protocol Name
+		; append var-header #{05}	; Protocol Version
 
-		append out enc-string "MQTT"	; Protocol Name
-		append out #{05}	; Protocol Version
+		append var-header #{00044D51545405} ; encoded string MQTT + 05 (version)
 
 		/local connect-flags: #{00}
 		parse flags [
@@ -220,81 +259,106 @@ make-header: context [
 			|	'password (connect-flags: connect-flags or #{40})
 			]
 		]
-		append out connect-flags
+		append var-header connect-flags
 
-		append out #{0000}	; TODO: Keep Alive value (seconds)
+		append var-header #{0000}	; TODO: Keep Alive value (seconds)
 
 		; -- Properties
 
-		props: copy #{}
+		/local props: copy #{}
 
 		; ---- session expiry interval (opt) [11h 4 byte]
-
 		;append props #{1100000000}
 
 		; ---- receive maximum (opt) [21h 2 byte]
-
 		;append props #{21FFFF}
 
 		; ---- maximum packet size (opt) [27h 4 byte]
-
 		;append props #{270000FFFF}
 
 		; ---- topic alias maximum (opt) [22h 2 byte]
-
 		;append props #{22FFFF}
 
 		; ---- request response information (opt) [19h 1 byte logic]
-
 		;append props #{1901} ; zero or one
 
 		; ---- request problem information (opt) [17h 1 byte logic]
-
 		;append props #{1701} ; zero or one
 
 		; ---- user property (any) [26h string-pair]
-
 		;append props #{}
 
 		; ---- authentication method (opt) [15h string]
-
 		;append props #{}
 
 		; ---- authentication data (opt) [16 1 byte]  - auth method must be included
-
 		insert props enc-int length? props
 
-		append out props
-
-		out
+		append var-header props
 	]
 
 	subscribe: funk [][
-
-		; -- var header
-		/local var-header: clear #{}
-		; ---- packet identifier
-
-		/local packet-id: make-packet-id
-		mqtt/packet-id: to integer! packet-id
-		print ["Packet ID:" to integer! packet-id packet-id]
-		append var-header packet-id
-
-		; ---- properties
+		; -- properties
 
 		/local vh-props: clear #{}
 		
-		; ------ subscription identifier
+		; -- subscription identifier
 		#TODO [opt 0Bh var-int] ; can't be zero
 
-		; ------ user property
+		; -- user property
 		#TODO [any 26h string string]
 		
 		append var-header enc-int length? vh-props
 		append var-header vh-props
-
-		length: length + length? var-header
 	]
+
+	suback: funk [][
+		; -- properties
+		/local prop-length: 0
+		/local props: clear #{}
+
+		; ---- reason string
+		#TODO [1Fh string]
+
+		; ---- user property
+		#TODO [26h string string]
+
+		append var-header props
+	]
+
+	publish: funk [header][
+		; -- properties
+
+		/local props: clear #{}
+
+		; ---- payload format indicator
+		; [01h [0 unspecified-bytes | 1 utf8-string]]
+
+		; ---- message expiry interval
+		; [02h int32]
+
+		; ---- topic alias
+		; [23h int16]
+
+		; ---- response topic
+		; [08h string]
+
+		; ---- correlation data
+		; [09h binary]
+
+		; ---- user property
+		; [26h 2 string]
+
+		; ---- subscription identifier
+		; [0Bh var-int]
+
+		; ---- content type
+		; [03h string]
+
+		append var-header enc-int length? props
+		append var-header props
+	]
+
 ]
 
 ; -- end of MAKE-HEADER context --
@@ -304,7 +368,6 @@ make-header: context [
 make-payload: context [
 
 	connect: funk [flags][
-
 		;	The Payload of the CONNECT packet contains one or more length-prefixed
 		;	fields, whose presence is determined by the flags in the Variable Header.
 		;	These fields, if present, MUST appear in the order:
@@ -315,10 +378,7 @@ make-payload: context [
 		;		User Name
 		;		Password
 
-		/local payload: clear #{}
-
 		; -- client identifier
-
 		append payload enc-string "redmqttv0" ; TODO: should be different for each client
 
 		; -- will properties (if will flag = 1)
@@ -346,11 +406,9 @@ make-payload: context [
 		; -- user name [string] (if user name flag = 1)
 
 		; -- password [string] (if password flag = 1)
-
 	]
 
 	subscribe: funk [topic [string! path! block!]][
-		/local payload: clear #{}
 		topic: append clear [] topic
 		foreach /local tpc topic [
 			/local data: form tpc
@@ -366,189 +424,21 @@ make-payload: context [
 		]
 	]
 
-]
+	suback: funk [][
+		; -- payload
+		#TODO 'SUBACK-REASON-CODES
+		append payload #{00} ; placeholder: Granted QoS 0
+	]
+
+	publish: funk [data][
+	; ---- publish payload
+		unless any [string? data binary? data][data: form data]
+		append payload data
+	]
 
 ; -- end of MAKE-PAYLOAD context --
-
-make-subscribe-message: funk [
-	topic [string! path! block!]
-][
-	/local length: 0
-
-	; -- var header
-	/local var-header: clear #{}
-	; ---- packet identifier
-
-	/local packet-id: make-packet-id
-	mqtt/packet-id: to integer! packet-id
-	print ["Packet ID:" to integer! packet-id packet-id]
-	append var-header packet-id
-
-	; ---- properties
-
-	/local vh-props: clear #{}
-	
-	; ------ subscription identifier
-	[opt 0Bh var-int] ; can't be zero
-
-	; ------ user property
-	[any 26h string string]
-	
-	append var-header enc-int length? vh-props
-	append var-header vh-props
-
-	length: length + length? var-header
-
-	; ---- subscripe payload
-	/local payload: clear #{}
-	topic: append clear [] topic
-	foreach /local tpc topic [
-		/local data: form tpc
-		append payload enc-int16 length? data
-		append payload data
-		/local sub-opt: 0
-		sub-opt: sub-opt or (0 << 6)	; [2 bit] TODO: QoS
-		sub-opt: sub-opt or (0 << 5)	; [1 bit] TODO: No Local option
-		sub-opt: sub-opt or (0 << 4)	; [1 bit] TODO: Retain As Published
-		sub-opt: sub-opt or (0 << 2)	; [2 bit] TODO: Retain Handling
-		sub-opt: sub-opt or 0			; [2 bit] Reserved
-		append payload sub-opt
-	]
-
-	length: length + length? payload
-
-	rejoin [ #{}
-		82h	; -- SUBSCRIBE header
-		enc-int length
-		var-header
-		payload
-	]
 ]
-
-make-suback-messagge: funk [][
-
-	/local length: 0
-
-	; -- variable header
-
-	/local var-header: clear #{}
-	append var-header mqqt/packet-id
-
-	; ---- properties
-
-	/local prop-length: 0
-	/local props: clear #{}
-
-	; ------ reason string
-
-	#TODO [1Fh string]
-
-	; ------ user property
-
-	#TODO [26h string string]
-
-	append var-header props
-
-	; ---- payload
-
-	#TODO 'SUBACK-REASON-CODES
-
-	payload: #{00} ; placeholder: Granted QoS 0
-
-	length: (length? var-header) + (length? payload)
-
-	rejoin [
-		#{}
-		#{90}
-		enc-int length
-		var-header
-		payload
-	]
-]
-
-
-
-make-publish-message: funk [
-	topic-name [path! string!]
-	payload
-][
-	; TODO: get this from external sources
-	/local dup: 0
-	/local qos: 0
-	/local retain: 0
-
-	/local fixed-header: (3 << 4) or (dup << 3) or (qos << 2) or retain
-
-	; -- variable header
-	;	The Variable Header of the PUBLISH Packet contains 
-	;	the following fields in the order: 
-	;	- Topic Name
-	;	- Packet Identifier
-	;	- Properties
-
-	/local var-header: clear #{}
-
-	; ---- topic name
-	; [string]
-
-	append var-header enc-string form topic-name
-
-	; ---- packet identifier
-	; [if (qos > 0) int16]
-
-	; TODO
-
-	; ---- properties
-
-	/local props: clear #{}
-
-	; ------ payload format indicator
-
-	; [01h [0 unspecified-bytes | 1 utf8-string]]
-
-	; ------ message expiry interval
-
-	; [02h int32]
-
-	; ------ topic alias
-
-	; [23h int16]
-
-	; ------ response topic
-
-	; [08h string]
-
-	; ------ correlation data
-
-	; [09h binary]
-
-	; ------ user property
-
-	; [26h 2 string]
-
-	; ------ subscription identifier
-
-	; [0Bh var-int]
-
-	; ------ content type
-
-	; [03h string]
-
-
-	append var-header enc-int length? props
-	append var-header props
-
-	; ---- publish payload
-
-	unless any [string? payload binary? payload][payload: form payload]
-
-	rejoin [
-		#{}
-		fixed-header
-		enc-int (length? var-header) + (length? payload)
-		var-header
-		payload
-	]
+; -- end of anynomouc context for making messages
 ]
 
 make-pingreq-message: func [][#{C000}]
@@ -567,16 +457,16 @@ parse-message: funk [msg][
 	msg: copy msg ; NOTE just for testing
 	; -- packet type
 	/local byte: take msg
-	mqtt/type: pick message-types byte >> 4
-	mqtt/flags: byte and 0Fh
-	mqtt/length: dec-int msg
+	state/type: pick message-types byte >> 4
+	state/flags: byte and 0Fh
+	state/length: dec-int msg
 
-	print ["Type:" mqtt/type]
-	mqtt/state: mqtt/type
+	print ["Type:" state/type]
+;	state/state: state/type
 
 	; -- variable header
 	;
-	switch mqtt/type [
+	switch state/type [
 		CONNACK	[process-connack msg]
 		SUBACK	[process-suback msg]
 		PUBLISH	[process-publish msg]
@@ -584,7 +474,7 @@ parse-message: funk [msg][
 	]
 
 	reduce [
-		mqtt/type
+		state/type
 		session-present?
 		reason-code
 	]
@@ -687,10 +577,10 @@ process-suback: func [msg][
 	; ---- Packet identifier
 
 	/local packet-id: dec-int16 msg
-	either equal? packet-id mqtt/packet-id [
+	either equal? packet-id state/packet-id [
 		print ["SUBACK: Packet ID:" packet-id]
 	][
-		print ["SUBACK Packet ID:" packet-id "Expected:" mqtt/packet-id]
+		print ["SUBACK Packet ID:" packet-id "Expected:" state/packet-id]
 		do make error! "Packet identifier differs"
 	]
 
@@ -730,8 +620,8 @@ process-suback: func [msg][
 process-publish: funk [
 	msg
 ][
-	/local flags: mqtt/flags
-	/local length: mqtt/length
+	/local flags: state/flags
+	/local length: state/length
 	/local dup: flags >> 3
 	/local qos: (flags and 7) >> 1
 	/local retain: flags and 1
@@ -741,13 +631,13 @@ process-publish: funk [
 	; ---- topic name
 
 	/local topic-name: dec-string msg
-	length: length - mqtt/taken
+	length: length - state/taken
 
 	; ---- packet identifier
 
 	if qos > 0 [
 		/local packet-id: dec-int16 msg
-		length: length - mqtt/taken
+		length: length - state/taken
 	]
 
 	; ---- publish properties
@@ -758,7 +648,7 @@ process-publish: funk [
 
 	; TODO: parse props
 
-	length: length - mqtt/taken
+	length: length - state/taken
 
 	; -- payload
 
