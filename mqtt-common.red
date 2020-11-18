@@ -135,7 +135,6 @@ make-message: funk [
 	/local length: 0 ; TODO: probably not needed
 
 	; -- variable header
-	/local var-header: clear #{}
 
 	; -- packet identifier
 	if find [
@@ -168,9 +167,7 @@ make-message: funk [
 	]
 
 
-	length: enc-int length? var-header
-	append out length
-	append out var-header
+	length: length? var-header
 
 	; TODO: append out payload
 	/local payload: switch type [
@@ -179,6 +176,15 @@ make-message: funk [
 		]
 	]
 
+	/local payload: switch type [
+		CONNECT [make-payload/connect]
+		SUBSCRIBE [make-payload/subscribe message]
+	]
+
+
+	length: length + length? payload
+	append out enc-inc length
+	append out var-header
 	out
 ]
 
@@ -262,23 +268,52 @@ make-header: context [
 
 		out
 	]
+
+	subscribe: funk [][
+
+		; -- var header
+		/local var-header: clear #{}
+		; ---- packet identifier
+
+		/local packet-id: make-packet-id
+		mqtt/packet-id: to integer! packet-id
+		print ["Packet ID:" to integer! packet-id packet-id]
+		append var-header packet-id
+
+		; ---- properties
+
+		/local vh-props: clear #{}
+		
+		; ------ subscription identifier
+		#TODO [opt 0Bh var-int] ; can't be zero
+
+		; ------ user property
+		#TODO [any 26h string string]
+		
+		append var-header enc-int length? vh-props
+		append var-header vh-props
+
+		length: length + length? var-header
+	]
 ]
 
 ; -- end of MAKE-HEADER context --
+
+; -- MAKE-PAYLOAD context --
 
 make-payload: context [
 
 	connect: funk [flags][
 
-	;	The Payload of the CONNECT packet contains one or more length-prefixed
-	;	fields, whose presence is determined by the flags in the Variable Header.
-	;	These fields, if present, MUST appear in the order:
-	;		Client Identifier (MUST be present)
-	;		Will Properties
-	;		Will Topic
-	;		Will Payload
-	;		User Name
-	;		Password
+		;	The Payload of the CONNECT packet contains one or more length-prefixed
+		;	fields, whose presence is determined by the flags in the Variable Header.
+		;	These fields, if present, MUST appear in the order:
+		;		Client Identifier (MUST be present)
+		;		Will Properties
+		;		Will Topic
+		;		Will Payload
+		;		User Name
+		;		Password
 
 		/local payload: clear #{}
 
@@ -313,6 +348,24 @@ make-payload: context [
 		; -- password [string] (if password flag = 1)
 
 	]
+
+	subscribe: funk [topic [string! path! block!]][
+		/local payload: clear #{}
+		topic: append clear [] topic
+		foreach /local tpc topic [
+			/local data: form tpc
+			append payload enc-int16 length? data
+			append payload data
+			/local sub-opt: 0
+			sub-opt: sub-opt or (0 << 6)	; [2 bit] TODO: QoS
+			sub-opt: sub-opt or (0 << 5)	; [1 bit] TODO: No Local option
+			sub-opt: sub-opt or (0 << 4)	; [1 bit] TODO: Retain As Published
+			sub-opt: sub-opt or (0 << 2)	; [2 bit] TODO: Retain Handling
+			sub-opt: sub-opt or 0			; [2 bit] Reserved
+			append payload sub-opt
+		]
+	]
+
 ]
 
 ; -- end of MAKE-PAYLOAD context --
