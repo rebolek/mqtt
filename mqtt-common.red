@@ -6,7 +6,7 @@ Red[
 		message		make	process	status
 
 		CONNECT		done	todo	(partially)
-		CONNACK		todo	done	(partially)
+		CONNACK		done	done	(partially)
 		PUBLISH		done	todo	(partially)
 		PUBACK		todo	done	(partially)
 		PUBREC		todo	todo
@@ -14,7 +14,7 @@ Red[
 		PUBCOMP		todo	todo
 		SUBSCRIBE	done	todo	(partially)
 		SUBACK		done	done	(make: untested done: partially)
-		UNSUBSCRIBE	todo	todo
+		UNSUBSCRIBE	done	todo	(partially)
 		UNSUBACK	todo	todo
 		PINGREQ		done	todo
 		PINGRESP	done	todo
@@ -122,10 +122,11 @@ make-packet-id: func [][
 
 ; -- send message -----------------------------------------------------------
 
-context [
+.: context [
 
 var-header: #{}	; needs to be accessible from other functions
 payload: #{}	; dtto
+props: #{}
 out: #{}
 
 set 'make-message funk [
@@ -138,8 +139,8 @@ set 'make-message funk [
 ]
 	clear out
 	clear var-header
+	clear props
 	clear payload
-
 	/local qos: 0
 
 	; -- fixed header
@@ -167,7 +168,7 @@ set 'make-message funk [
 	; -- variable header
 
 	; ---- PUBLISH: topic name (3.2.2.1)
-	if [type = 'PUBLISH][append var-header enc-string form header]
+	if type = 'PUBLISH [append var-header enc-string form header]
 
 	; ---- packet identifier
 	if any [
@@ -191,6 +192,7 @@ set 'make-message funk [
 		; TODO set var-byte-int propert length
 	]
 
+	; now variable header and properties will be done
 	switch type [
 		CONNECT [
 			flags: any [
@@ -202,8 +204,10 @@ set 'make-message funk [
 			]
 			make-header/connect flags
 		]
+		CONNACK [make-header/connack]
 		SUBSCRIBE [make-header/subscribe]
 		SUBACK [make-header/suback]
+		UNSUBSCRIBE [make-header/unsubscribe]
 		PUBLISH [
 			/local topic: either string? header [header][
 				first find header string!
@@ -211,11 +215,21 @@ set 'make-message funk [
 			make-header/publish topic
 		]
 	]
+	
+	; append properties when required
+	if find [
+		CONNECT CONNACK PUBLISH PUBACK PUBREC PUBREL PUBCOMP SUBSCRIBE
+		SUBACK UNSUBSCRIBE UNSUBACK DISCONNECT AUTH
+	] type [
+		append var-header enc-int length? props
+		append var-header props
+	]
 
 	switch type [
 		CONNECT [make-payload/connect flags]
 		SUBSCRIBE [make-payload/subscribe message]
 		SUBACK [make-payload/suback]
+		UNSUBSCRIBE [make-payload/unsubscribe message]
 		PUBLISH [make-payload/publish message]
 	]
 
@@ -265,8 +279,6 @@ make-header: context [
 
 		; -- Properties
 
-		/local props: copy #{}
-
 		; ---- session expiry interval (opt) [11h 4 byte]
 		;append props #{1100000000}
 
@@ -292,45 +304,83 @@ make-header: context [
 		;append props #{}
 
 		; ---- authentication data (opt) [16 1 byte]  - auth method must be included
-		insert props enc-int length? props
+	]
 
-		append var-header props
+	connack: funk [][
+		; 3.2.2
+		; -- connect ackonwledge flags 3.2.2.1
+		/local caf: 0 ; TODO: 1 when session present (server management)
+
+		; -- connect reason code 3.2.2.2
+		/local crc: 0 ; TODO: select from CONNECT-REASON-CODES based on what's required
+
+		; -- properties 3.2.2.3
+
+		; ---- session expiry interval (opt) [11h 4 byte]
+		;append props #{1100000000}
+
+		; ---- receive maximum (opt) [21h 2 byte]
+		;append props #{21FFFF}
+
+		; ---- maximum QoS (opt) [24h 1 byte]
+		append props #{2400} ; NOTE: No QoS supported yet. If not present,
+							;		it means QoS = 2 and that's certainly not true ;)
+
+		; ---- retain available (opt) [25h 1 byte]
+		;append props #{2500}
+
+		; ---- maximum packet size (opt) [27h 4 byte]
+		;append props #{270000FFFF}
+
+		; ---- assigned client identifier (opt) [12h string]
+
+		; ---- topic alias maximum (opt) [22h 2 byte]
+		;append props #{22FFFF}
+
+		; ---- reason string (opt) [1Fh string]
+		;append props #{1F}
+		;append props third find connect-reason-codes crc
+
+		; ---- wildcard subscription available (opt) [28h 1 byte]
+
+		; ---- subscription identifiers available (opt) [29h 1 byte]
+
+		; ---- shared subscription available (opt) [2Ah 1 byte]
+
+		; ---- server keep alive (opt) [13h 2 byte]
+
+		; ---- response information (opt) [1Ah string]
+
+		; ---- server reference (opt) [1Ch string]
+
+		; ---- authentication method (opt) [15h string]
+		;append props #{}
+
+		; ---- authentication data (opt) [16 1 byte]  - auth method must be included
 	]
 
 	subscribe: funk [][
-		; -- properties
-
-		/local vh-props: clear #{}
-		
 		; -- subscription identifier
 		#TODO [opt 0Bh var-int] ; can't be zero
 
 		; -- user property
-		#TODO [any 26h string string]
-		
-		append var-header enc-int length? vh-props
-		append var-header vh-props
+		#TODO [any 26h 2 string]
 	]
 
 	suback: funk [][
-		; -- properties
-		/local prop-length: 0
-		/local props: clear #{}
-
 		; ---- reason string
 		#TODO [1Fh string]
 
 		; ---- user property
-		#TODO [26h string string]
+		#TODO [26h 2 string]
+	]
 
-		append var-header props
+	unsubscribe: funk [][
+		; ---- user property
+		; [any [26h 2 string]]
 	]
 
 	publish: funk [header][
-		; -- properties
-
-		/local props: clear #{}
-
 		; ---- payload format indicator
 		; [01h [0 unspecified-bytes | 1 utf8-string]]
 
@@ -354,9 +404,6 @@ make-header: context [
 
 		; ---- content type
 		; [03h string]
-
-		append var-header enc-int length? props
-		append var-header props
 	]
 
 ]
@@ -411,9 +458,7 @@ make-payload: context [
 	subscribe: funk [topic [string! path! block!]][
 		topic: append clear [] topic
 		foreach /local tpc topic [
-			/local data: form tpc
-			append payload enc-int16 length? data
-			append payload data
+			append payload enc-string form tpc
 			/local sub-opt: 0
 			sub-opt: sub-opt or (0 << 6)	; [2 bit] TODO: QoS
 			sub-opt: sub-opt or (0 << 5)	; [1 bit] TODO: No Local option
@@ -430,6 +475,13 @@ make-payload: context [
 		append payload #{00} ; placeholder: Granted QoS 0
 	]
 
+	unsubscribe: funk [topic [string! path! block!]][
+		topic: append clear [] topic
+		foreach /local tpc topic [
+			append payload enc-string form tpc
+		]
+	]
+
 	publish: funk [data][
 	; ---- publish payload
 		unless any [string? data binary? data][data: form data]
@@ -441,14 +493,9 @@ make-payload: context [
 ; -- end of anynomouc context for making messages
 ]
 
-make-pingreq-message: func [][#{C000}]
-
-make-pingresp-message: func [][#{D000}]
-
 ; -- receive message --------------------------------------------------------
 
-; --- TODO: Context start here
-
+context [
 session-present?:
 reason-code:
 	none
@@ -480,7 +527,7 @@ parse-message: funk [msg][
 	]
 ]
 
-#TODO "all ~process~ functions should be in same context"
+#TODO "move process messages to PROCESS context"
 
 process-connack: func [msg][
 	; The Variable Header of the CONNACK Packet contains the following
@@ -704,8 +751,8 @@ process-publish: funk [
 process-ping: func [msg][
 	
 ]
-
-; ---- TODO: Context ends here
+; ---- Context ends here
+]
 
 
 
