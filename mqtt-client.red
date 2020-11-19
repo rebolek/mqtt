@@ -18,7 +18,7 @@ debug: :print
 make-connection: func [][
 	/local request: copy #{}
 	append request make-conn-header []
-	append request make-payload
+	append request make-conn-payload
 	insert request enc-int length? request
 	insert request #{10}
 	request
@@ -51,7 +51,7 @@ run-client: does [
 
 	client: open tcp://127.0.0.1:1883
 	client/awake: :mqtt-awake
-	b: make-connection
+	b: probe make-connection
 	insert client b
 	wait client
 
