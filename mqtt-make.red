@@ -9,6 +9,7 @@ Red[]
 	props: #{}
 	out: #{}
 	flags: none
+	msg: none
 
 	set 'make-message funk [
 		type	[word!]
@@ -23,6 +24,7 @@ Red[]
 		clear props
 		clear payload
 		/local qos: 0
+		msg: message
 
 		; -- fixed header
 
@@ -92,9 +94,8 @@ Red[]
 				first find header string!
 			]
 		]
-		probe var-header
-		do select headers type
-		probe var-header
+		/local act: select headers type
+		act
 		
 		; append properties when required
 		if find [
@@ -121,7 +122,6 @@ Red[]
 	headers: context [
 
 		connect: funk [
-			flags ; TODO: should take properties, not just flags
 			/local value
 		][
 			; -- CONNECT Variable Header
@@ -333,7 +333,7 @@ print "APP"
 		]
 
 		subscribe: funk [][
-			topic: append clear [] topic
+			topic: append clear [] msg
 			foreach /local tpc topic [
 				append payload enc-string form tpc
 				/local sub-opt: 0

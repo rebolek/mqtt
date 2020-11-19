@@ -11,7 +11,7 @@ context [
 	msg:
 		none
 
-	parse-message: funk [message][
+	set 'parse-message funk [message][
 		message: copy message ; NOTE just for testing
 		msg: message
 		; -- packet type

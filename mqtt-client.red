@@ -2,16 +2,12 @@ Red[
 	Title: "MQTT client"
 	Author: "Boleslav Březovský"
 	Notes: {
-Connection is ready.
-next step:
-
-- send SUBSCRIBE message
-- receive SUBACK reply
-- send PUBLISH message
+Proper CONNECT message: #{101600044D515454050000000000097265646D7174747630}
 	}
 ]
 
 #include %mqtt-common.red
+#include %mqtt-dialect.red
 
 debug: :print
 
@@ -49,20 +45,22 @@ test-mqtt-awake: func [event /local port] [
 	]
 ]
 
-context [
+.: context [
 	response: none
 	client: none
+	server: tcp://127.0.0.1:1883
 
 	mqtt-awake: func [event /local port][
 		port: event/port
+		print ["xxxx" event/type "xxxx"]
 		switch event/type [
 			connect [
-				data: ask "So what? "
 				insert client send-mqtt 'PINGREQ none none
 			]
 			read [
 				response: parse-message port/data
-			;	close port
+				print "Closing port"
+		;		close port
 			]
 			wrote [copy port]
 		]
@@ -72,17 +70,30 @@ context [
 		/local msg: probe make-message msg-type header payload
 		insert client msg
 		wait client
+		print "afta waita"
 		response
 	]
 
 	set 'init-client func [][
-		client: open tcp://127.0.0.1:1883
+		client: open server
 		client/awake: :mqtt-awake
 	]
 
 	set 'test-client has [msg] [
-		client: open tcp://127.0.0.1:1883
+		client: open server
 		client/awake: :mqtt-awake
 		send-mqtt 'CONNECT none none
+	]
+
+	set 'mqtt-client funk [][
+		client: open server
+		client/awake: :mqtt-awake
+		send-mqtt 'CONNECT none none
+		until [
+			data: ask "So what? "
+			
+			data = "q"
+		]
+		close client
 	]
 ]
