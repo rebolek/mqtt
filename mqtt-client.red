@@ -59,8 +59,27 @@ test-mqtt-awake: func [event /local port] [
 			]
 			read [
 				response: parse-message port/data
-				print "Closing port"
+		;		print "Closing port"
 		;		close port
+			]
+			wrote [copy port]
+		]
+	]
+
+	mqtt-awake-loop: funk [event /local port][
+		port: event/port
+		print ["xxxx" event/type "xxxx"]
+		switch event/type [
+			connect [
+				insert client send-mqtt 'PINGREQ none none
+			]
+			read [
+				response: parse-message port/data
+				print "Closing port"
+				/local data: ask "mqtt: "
+				either "q" = data [close port][
+					do head insert parse-mqtt load data 'send-mqtt
+				]
 			]
 			wrote [copy port]
 		]
@@ -87,13 +106,8 @@ test-mqtt-awake: func [event /local port] [
 
 	set 'mqtt-client funk [][
 		client: open server
-		client/awake: :mqtt-awake
+		client/awake: :mqtt-awake-loop
 		send-mqtt 'CONNECT none none
-		until [
-			data: ask "So what? "
-			
-			data = "q"
-		]
-		close client
+		wait client
 	]
 ]
