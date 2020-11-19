@@ -69,8 +69,10 @@ context [
 	]
 
 	set 'send-mqtt funk [msg-type header payload][
-		/local msg: make-message msg-type header payload
+		/local msg: probe make-message msg-type header payload
 		insert client msg
+		wait client
+		response
 	]
 
 	set 'init-client func [][
@@ -78,11 +80,9 @@ context [
 		client/awake: :mqtt-awake
 	]
 
-	run-client: does [
+	set 'test-client has [msg] [
 		client: open tcp://127.0.0.1:1883
 		client/awake: :mqtt-awake
-		b: make-connection
-		insert client b
-		wait client
+		send-mqtt 'CONNECT none none
 	]
 ]
