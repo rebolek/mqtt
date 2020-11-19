@@ -3,6 +3,9 @@ Red[
 	Author: "Boleslav Březovský"
 	Notes: {
 Proper CONNECT message: #{101600044D515454050000000000097265646D7174747630}
+
+SUBSCRIBE message seems to have some problems
+
 	}
 ]
 
