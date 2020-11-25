@@ -121,3 +121,5 @@ test-mqtt-awake: func [event /local port] [
 		wait client
 	]
 ]
+
+mqtt-client

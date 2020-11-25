@@ -53,7 +53,7 @@ Red[
 #include %mqtt-make.red
 #include %mqtt-parse.red
 
-state: context [
+mqtt-state: context [
 ;	state: none
 	type: none
 	packet-id: none
@@ -74,7 +74,7 @@ enc-string: func [string [string!]][
 
 dec-string: funk [data [binary!]][
 	/local length: to integer! take/part data 2
-	state/taken: 2 + length
+	mqtt-state/taken: 2 + length
 	to string! take/part data length
 ]
 
@@ -101,10 +101,10 @@ enc-int16: func [value [integer!] /local out][
 dec-int: func [data [binary!] /local multiplier value enc-byte][
 	multiplier: 1
 	value: 0
-	state/taken: 0
+	mqtt-state/taken: 0
 	until [
 		enc-byte: take data
-		state/taken: state/taken + 1
+		mqtt-state/taken: mqtt-state/taken + 1
 		value: (enc-byte and 127) * multiplier + value
 		if multiplier > 2'097'152 [ ; 128 ** 3
 			do make error! "Malformed variable byte integer"
@@ -115,9 +115,9 @@ dec-int: func [data [binary!] /local multiplier value enc-byte][
 	value
 ]
 
-dec-int16: func [data [binary!]][to integer! take/part data state/taken: 2]
+dec-int16: func [data [binary!]][to integer! take/part data mqtt-state/taken: 2]
 
-dec-int32: func [data [binary!]][to integer! take/part data state/taken: 4]
+dec-int32: func [data [binary!]][to integer! take/part data mqtt-state/taken: 4]
 
 ; -- end --
 

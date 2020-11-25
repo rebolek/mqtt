@@ -16,17 +16,17 @@ context [
 		msg: message
 		; -- packet type
 		/local byte: take msg
-		state/type: pick message-types byte >> 4
-		state/flags: byte and 0Fh
-		state/length: dec-int msg
+		mqtt-state/type: pick message-types byte >> 4
+		mqtt-state/flags: byte and 0Fh
+		mqtt-state/length: dec-int msg
 
-		print ["Type:" state/type]
+		print ["Type:" mqtt-state/type]
 
 		; -- parse variable header
-		do select types state/type
+		do select types mqtt-state/type
 
 		reduce [
-			state/type
+			mqtt-state/type
 			session-present?
 			reason-code
 		]
@@ -196,10 +196,10 @@ context [
 
 		; ---- Packet identifier
 		/local packet-id: dec-int16 msg
-		either equal? packet-id state/packet-id [
+		either equal? packet-id mqtt-state/packet-id [
 			print ["SUBACK: Packet ID:" packet-id]
 		][
-			print ["SUBACK Packet ID:" packet-id "Expected:" state/packet-id]
+			print ["SUBACK Packet ID:" packet-id "Expected:" mqtt-state/packet-id]
 			do make error! "Packet identifier differs"
 		]
 
@@ -235,8 +235,8 @@ context [
 	]
 
 	publish: func [][
-		/local flags: state/flags
-		/local length: state/length
+		/local flags: mqtt-state/flags
+		/local length: mqtt-state/length
 		/local dup: flags >> 3
 		/local qos: (flags and 7) >> 1
 		/local retain: flags and 1
@@ -246,13 +246,13 @@ context [
 		; ---- topic name
 
 		/local topic-name: dec-string msg
-		length: length - state/taken
+		length: length - mqtt-state/taken
 
 		; ---- packet identifier
 
 		if qos > 0 [
 			/local packet-id: dec-int16 msg
-			length: length - state/taken
+			length: length - mqtt-state/taken
 		]
 
 		; ---- publish properties
@@ -263,7 +263,7 @@ context [
 
 		; TODO: parse props
 
-		length: length - state/taken
+		length: length - mqtt-state/taken
 
 		; -- payload
 

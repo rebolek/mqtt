@@ -83,7 +83,7 @@ FLAGS [DUP | RETAIN | QOS <integer!>]	- set flags for PUBLISH message
 			] type
 		] [
 			unless packet-id [packet-id: make-packet-id]
-			state/packet-id: to integer! packet-id
+			mqtt-state/packet-id: to integer! packet-id
 			print ["Packet ID:" to integer! packet-id packet-id]
 			append var-header packet-id
 		]
