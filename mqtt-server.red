@@ -20,7 +20,8 @@ process-data: func [port /local response] [
 	;	print mold mqtt-state
 		probe mqtt-state
 		response: switch mqtt-state/type [
-			CONNECT [make-message 'CONNACK none none]
+			CONNECT	[make-message 'CONNACK none none]
+			PINGREQ	[make-message 'PINGRESP none none]
 		]
 		clear port/data
 		insert port response
