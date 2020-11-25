@@ -35,12 +35,12 @@ mqtt-awake: func [event /local port] [
 			if mqtt/state = 'CONNACK [
 				; send subscribe message
 				; NOTE: this is just an example and must be user-configurable
-				insert port make-subscribe-message ["$SYS" "a/b"]
+				insert port probe make-subscribe-message ["$SYS" "a/b"]
 			]
 			if mqtt/state = 'SUBACK [
 				; send publish message
 				; NOTE: this is just an example and must be user-configurable
-				insert port make-publish-message "a/b" "hello world"
+				insert port probe make-publish-message "a/b" "hello world"
 			]
 		]
 		wrote [copy port]
