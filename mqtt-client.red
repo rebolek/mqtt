@@ -6,7 +6,6 @@ Red[
 Proper CONNECT message: #{101600044D515454050000000000097265646D7174747630}
 
 #SUBSCRIBE
-SUBSCRIBE message seems to have some problems
 Proper SUBSCRIBE message: #{82090265000003612F6200}
 (packet ID: #{0265})
 
@@ -84,7 +83,10 @@ test-mqtt-awake: func [event /local port] [
 				response: parse-message port/data
 				print "Closing port"
 				/local data: ask "mqtt: "
-				either "q" = data [close port][
+				either "q" = data [
+					close port
+					halt
+				][
 					do probe head insert parse-mqtt load data 'send-mqtt
 				]
 			]

@@ -34,6 +34,12 @@ Red[
 		make-message 'CONNECT none none ; empty flags
 		make-message 'CONNECT [flags [flags here]] none
 
+		##SUBSCRIBE
+
+		make-message 'SUBSCRIBE none 'a/b
+		make-message 'SUBSCRIBE none "$SYS"
+		make-message 'SUBSCRIBE none [a/b a/d]
+
 		##PUBLISH
 
 		make-message 'PUBLISH "some/topic" "message"
