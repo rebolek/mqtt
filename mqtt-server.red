@@ -10,16 +10,20 @@ debug: :comment
 total: 0.0
 count: 0
 
-process-data: func [port /local len] [
+process-data: func [port /local response] [
 	;debug ["port data:" port/data]
 	debug "process-data enter"
 	unless empty? port/data [
 		probe port/data
 		parse-message port/data
 		probe length? port/data
-		probe mqtt
+	;	print mold mqtt-state
+		probe mqtt-state
+		response: switch mqtt-state/type [
+			CONNECT [make-message 'CONNACK none none]
+		]
 		clear port/data
-		insert port #{616263}
+		insert port response
 	]
 	debug "process-data exit"
 ]
