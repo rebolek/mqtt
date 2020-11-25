@@ -122,8 +122,8 @@ context [
 	set 'make-packet-id func [/random][
 		if random [return enc-int16 random 65535]
 		id: id + 1
-		if id = 65536 [id: -1]
-		id
+		if id = 65536 [id: 0]
+		enc-int16 id
 	]
 ]
 
