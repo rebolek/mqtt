@@ -2,9 +2,13 @@ Red[
 	Title: "MQTT client"
 	Author: "Boleslav Březovský"
 	Notes: {
+#CONNECT
 Proper CONNECT message: #{101600044D515454050000000000097265646D7174747630}
 
+#SUBSCRIBE
 SUBSCRIBE message seems to have some problems
+Proper SUBSCRIBE message: #{82090265000003612F6200}
+(packet ID: #{0265})
 
 	}
 ]
@@ -81,7 +85,7 @@ test-mqtt-awake: func [event /local port] [
 				print "Closing port"
 				/local data: ask "mqtt: "
 				either "q" = data [close port][
-					do head insert parse-mqtt load data 'send-mqtt
+					do probe head insert parse-mqtt load data 'send-mqtt
 				]
 			]
 			wrote [copy port]
