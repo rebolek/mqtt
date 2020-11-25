@@ -1,4 +1,16 @@
-Red[]
+Red[
+	Notes: {
+#HEADER
+
+Header contains simple dialect:
+
+ID <integer!>	- set Packet identifier to <integer!>
+RANDOM ID		- set Packet identifier to random value
+
+FLAGS [DUP | RETAIN | QOS <integer!>]	- set flags for PUBLISH message
+
+}
+]
 
 ; -- send message -----------------------------------------------------------
 
@@ -24,27 +36,37 @@ Red[]
 		clear props
 		clear payload
 		/local qos: 0
+		/local dup: 0
+		/local retain: 0
+		/local packet-id: none
 		msg: message
 
+		; -- get reserved flags, for PUBLISH message, they may be taken from header
+		flags: select reserved-flags type
+		unless flags [flags: 0]
+
+		; -- parse header to get some info
+		if header [
+			parse header [
+				some [
+					'id set /local value [integer! | binary!]
+					(packet-id: value) ; TODO: error checking (0-65535)
+				|	'random 'id
+					(packet-id: make-packet-id/random)
+				|	'flags into [
+						some [
+							'dup (dup: 1)
+						|	'retain (retain: 1)
+						|	'qos set value integer! (qos: value)
+						]
+					]
+				]
+			]
+		]
 		; -- fixed header
 
 		; control packet type
 		/local packet-type: index? find message-types type
-		flags: select reserved-flags type
-		; PUBLISH message doesn't have reserved flags, we get flags from header
-		unless flags [
-			flags: either flags: select header 'flags [
-				; flags are just words (for DUP and RETAIN) 
-				; or word followed by value (QoS)
-				/local dup: pick [0 1] not find flags 'dup
-				/local retain: pick [0 1] not find flags 'retain
-				qos: any [select flags 'qos 0] ; TODO: error handling
-				(dup << 3) or (qos << 2) or retain
-			][
-			;		flags are not required, if not present, set them to zero
-				0
-			]
-		]
 		/local byte: (packet-type << 4) or flags
 		append out byte
 
@@ -60,7 +82,7 @@ Red[]
 				PUBACK PUBREC PUBREL PUBCOMP SUBSCRIBE SUBACK UNSUBSCRIBE UNSUBACK
 			] type
 		] [
-			/local packet-id: make-packet-id
+			unless packet-id [packet-id: make-packet-id]
 			state/packet-id: to integer! packet-id
 			print ["Packet ID:" to integer! packet-id packet-id]
 			append var-header packet-id
@@ -96,7 +118,7 @@ Red[]
 		]
 		/local act: select headers type
 		act
-		
+
 		; append properties when required
 		if find [
 			CONNECT CONNACK PUBLISH PUBACK PUBREC PUBREL PUBCOMP SUBSCRIBE
@@ -333,7 +355,7 @@ print "APP"
 		]
 
 		subscribe: funk [][
-			topic: append clear [] msg
+			topic: append/only clear [] msg
 			foreach /local tpc topic [
 				append payload enc-string form tpc
 				/local sub-opt: 0
