@@ -81,9 +81,9 @@ test-mqtt-awake: func [event /local port] [
 			]
 			read [
 				response: parse-message port/data
-				print "Closing port"
 				/local data: ask "mqtt: "
 				either "q" = data [
+					print "Closing port"
 					close port
 					halt
 				][
@@ -95,6 +95,7 @@ test-mqtt-awake: func [event /local port] [
 	]
 
 	set 'send-mqtt funk [msg-type header payload][
+		print ["SEND:" msg-type]
 		/local msg: probe make-message msg-type header payload
 		insert client msg
 		wait client
