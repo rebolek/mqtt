@@ -118,11 +118,12 @@ dec-int32: func [data [binary!]][to integer! take/part data state/taken: 4]
 ; -- support functions
 
 context [
-	id: -1
+	doc-ref: 2.2.1
+	id: 0
 	set 'make-packet-id func [/random][
 		if random [return enc-int16 random 65535]
 		id: id + 1
-		if id = 65536 [id: 0]
+		if id = 65536 [id: 1]
 		enc-int16 id
 	]
 ]
