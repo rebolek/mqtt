@@ -11,14 +11,20 @@ context [
 
 	; -- rules
 
+	merge-paths: quote (unless block? value [value: append/only copy [] value])
+
 	; -- functions
 
 	set 'parse-mqtt funk [data][
 		clear result
 		parse data [
 			some [
-				'subscribe set value path!
-				(repend result [to lit-word! 'subscribe none to lit-path! value])
+				'subscribe set value [block! | path!]
+				merge-paths
+				(repend result [to lit-word! 'subscribe none value])
+			|	'unsubscribe set value [block! | path!]
+				merge-paths
+				(repend result [to lit-word! 'unsubscribe none value])
 			]
 		]
 		result
