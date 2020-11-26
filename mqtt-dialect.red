@@ -11,30 +11,29 @@ context [
 
 	; -- rules
 
-	merge-paths: quote (unless block? value [value: append/only copy [] value])
+	merge-paths: quote (unless block? value [value: append/only clear [] value])
 
 	; -- functions
 
-	output: func [cmd values][
-		insert values to lit-word! cmd
+	output: func [cmd values] [
+		#TODO "This is so freaking complicated, I can't even"
+		insert values compose [to lit-word! (to lit-word! cmd)]
 		repend result values
 	]
 
-	set 'parse-mqtt funk [data /local value][
+	set 'parse-mqtt funk [data] [
 		clear result
 		parse data [
 			some [
-			|	'pingreq (output 'pingreq [none none])
-				'subscribe set value [block! | path!]
+				'pingreq (output 'pingreq [none none])
+			|	'subscribe set value [block! | path!]
 				merge-paths
-			;	(repend result [to lit-word! 'subscribe none value])
 				(output 'subscribe [none value])
 			|	'unsubscribe set value [block! | path!]
 				merge-paths
-			;	(repend result [to lit-word! 'unsubscribe none value])
 				(output 'unsubscribe [none value])
 			]
 		]
-		result
+		probe result
 	]
 ]
