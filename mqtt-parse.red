@@ -104,7 +104,7 @@ context [
 
 	types: context [
 		connect: funk [][
-print "Parse CONNECT"
+print ["Parse CONNECT" length? msg]
 		; -- protocol name 3.1.2.1
 			/local prot: dec-string msg
 			unless prot = "MQTT" [do make error! "Not a MQTT protocol"]
@@ -128,8 +128,27 @@ print "Parse CONNECT"
 				will-flag:		byte/5
 				clean-start:	byte/6
 			]
-			print ["CONNECT rem:" length? msg]
 
+			; -- keep alive 3.1.2.10
+
+			mqtt-state/keep-alive: dec-int16 msg
+
+			; -- properties 3.1.2.11
+
+			/local prop-len: dec-int msg
+			print ["CONNECT properties length:" prop-len]
+
+			; TODO
+
+			; -- payload 3.1.3
+
+			; -- client identifier
+
+			mqtt-state/client-id: dec-string msg
+
+			; TODO: rest of payload - depends on flags
+
+			print ["CONNECT rem:" length? msg mold msg]
 		]
 
 		connack: funk [][

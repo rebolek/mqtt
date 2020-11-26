@@ -56,10 +56,12 @@ Red[
 mqtt-state: context [
 ;	state: none
 	type: none
+	client-id: none
 	packet-id: none
 	flags: none
+	keep-alive: none
 	length: none
-	taken: none		; number of bytes taken from message
+	taken: none		; number of bytes taken from message in last operation
 ]
 
 
