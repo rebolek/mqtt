@@ -26,6 +26,7 @@ context [
 		/local act: select types mqtt-state/type
 		act
 		probe mqtt-state
+		print ["remaining bytes:" length? msg msg]
 
 		reduce [
 			mqtt-state/type
@@ -142,13 +143,10 @@ print ["Parse CONNECT" length? msg]
 
 			; -- payload 3.1.3
 
-			; -- client identifier
-
+			; ---- client identifier
 			mqtt-state/client-id: dec-string msg
 
 			; TODO: rest of payload - depends on flags
-
-			print ["CONNECT rem:" length? msg mold msg]
 		]
 
 		connack: funk [][

@@ -7,8 +7,25 @@ Red [
 ;debug: :print
 debug: :comment
 
-total: 0.0
-count: 0
+; --
+
+sessions: #()
+
+make-session: func [][
+	put sessions mqtt-state/client-id context [
+		; some session values
+	]
+]
+
+update-session: funk [][
+	either session: select sessions mqtt-state/client-id [
+		; do some session update
+	][
+		make-session
+	]
+]
+
+; --
 
 process-data: func [port /local response] [
 	;debug ["port data:" port/data]
@@ -20,8 +37,12 @@ process-data: func [port /local response] [
 	;	print mold mqtt-state
 		probe mqtt-state
 		response: switch mqtt-state/type [
-			CONNECT	[make-message 'CONNACK none none]
+			CONNECT	[
+				update-session
+				make-message 'CONNACK none none
+			]
 			PINGREQ	[make-message 'PINGRESP none none]
+			PUBLISH	[make-message 'PUBACK none none]
 		]
 		clear port/data
 		insert port response
@@ -44,17 +65,26 @@ new-client: func [port /local data] [
 	copy port
 ]
 
-server: open tcp://:1883
+run-server: func [][
 
-server/awake: func [event] [
-	if event/type = 'accept [new-client event/port]
-	false
+	clear sessions
+
+	server: open tcp://:1883
+
+	server/awake: func [event] [
+		if event/type = 'accept [new-client event/port]
+		false
+	]
+
+	print "MQTT server: waiting for client to connect"
+
+	if none? system/view [
+		wait server
+		print "done"
+		close server
+	]
 ]
 
-print "MQTT server: waiting for client to connect"
-if none? system/view [
-	wait server
-	print "done"
-	close server
-]
+; --
 
+run-server
