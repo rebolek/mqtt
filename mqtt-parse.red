@@ -128,6 +128,7 @@ print "Parse CONNECT"
 				will-flag:		byte/5
 				clean-start:	byte/6
 			]
+			print ["CONNECT rem:" length? msg]
 
 		]
 

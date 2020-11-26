@@ -3,9 +3,9 @@ Red[
 	Notes: [
 		#commands
 
-		message		make	process	status
+		message		make	parse	status
 
-		CONNECT		done	todo	(partially)
+		CONNECT		done	done	(partially)
 		CONNACK		done	done	(partially)
 		PUBLISH		done	todo	(partially)
 		PUBACK		todo	done	(partially)
