@@ -209,9 +209,11 @@ print "APP"
 			; 3.2.2
 			; -- connect ackonwledge flags 3.2.2.1
 			/local caf: 0 ; TODO: 1 when session present (server management)
+			append var-header caf
 
 			; -- connect reason code 3.2.2.2
 			/local crc: 0 ; TODO: select from CONNECT-REASON-CODES based on what's required
+			append var-header crc
 
 			; -- properties 3.2.2.3
 

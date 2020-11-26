@@ -23,7 +23,9 @@ context [
 		print ["Type:" mqtt-state/type]
 
 		; -- parse variable header
-		do select types mqtt-state/type
+		/local act: select types mqtt-state/type
+		act
+		probe mqtt-state
 
 		reduce [
 			mqtt-state/type
@@ -101,8 +103,35 @@ context [
 	]
 
 	types: context [
+		connect: funk [][
+print "Parse CONNECT"
+		; -- protocol name 3.1.2.1
+			/local prot: dec-string msg
+			unless prot = "MQTT" [do make error! "Not a MQTT protocol"]
 
-		connack: func [][
+		; -- protocol version 3.1.2.2
+			/local version: take msg
+			#TODO "Version error checking"
+
+		; -- connect flags
+; As TAKE returns integer! when taking from binary!, but we need binary!
+; as we can't convert integer! to bitset! directly, this is the best
+; I can think of. Another possibility is:
+; to bitset! skip to binary! take msg 3
+			/local byte: to bitset! copy/part msg 1
+			remove/part msg 1
+			mqtt-state/flags: probe make object! [
+				user-name:		byte/0
+				password:		byte/1
+				will-retain:	byte/2
+				will-qos:		((make integer! byte/3) << 1) + make integer! byte/4
+				will-flag:		byte/5
+				clean-start:	byte/6
+			]
+
+		]
+
+		connack: funk [][
 			; The Variable Header of the CONNACK Packet contains the following
 			; fields in the order:
 			;
